@@ -10,7 +10,7 @@ This repository is a curated snapshot of the private Bluejay monorepo, published
 | Commits with an AI co-author | ~70% (mostly Claude Code) |
 | Pull requests | 2,300+ |
 | Deployable packages | 139 |
-| Application + test code, Oct 31 → Nov 20, 2026 | 378K → 795K lines (tests: 34K → 212K) |
+| User requests delivered to production through the development queue | 117 (30+ for client organizations) |
 
 ## How it works
 
