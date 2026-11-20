@@ -1,0 +1,38 @@
+name: storage
+description: A package for general file uploading, sharing, and management.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Internal
+  bluejay_design:
+    path: ../bluejay_design
+  shared_services:
+    path: ../shared_services
+  shared_ui:
+    path: ../shared_ui
+
+  # Firebase & Cloud
+  firebase_core: ^4.2.0
+  cloud_firestore: ^6.0.3
+  cloud_functions: ^6.2.0
+  firebase_storage: ^13.0.3
+  firebase_auth: ^6.1.1
+
+  # File Handling & UI
+  file_picker: ^8.0.5
+  url_launcher: ^6.1.5
+
+  # Utilities
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

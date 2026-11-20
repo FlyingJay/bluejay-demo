@@ -1,0 +1,18 @@
+{
+  "name": "bluejay-rules-tests",
+  "private": true,
+  "description": "Emulator tests for firestore.rules and storage.rules (plans/firestore-rules T2).",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "test": "node scripts/run.js",
+    "emulator:status": "node scripts/shared_emulator.js status",
+    "emulator:stop": "node scripts/shared_emulator.js stop"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "firebase": "13.2.0",
+    "firebase-tools": "15.35.0"
+  }
+}

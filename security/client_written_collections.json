@@ -1,0 +1,348 @@
+{
+  "$comment": "Collections Cloud Functions use that are NOT declared server-owned in security/collections.json, each with why and the client files that write it. Checked by security/check_server_collections.js: a collection functions use must be declared server-owned there or listed here, and an entry functions no longer use (or that the table now declares server-owned) fails as stale, so this list only shrinks. Seeded 2026-11-05 (rules plan T13). Entries marked BLOCKED are server-owned in the target design (plan §4.4/§4.5) but still have client writers; declare them once the named task moves those writers onto callables.",
+  "collections": {
+    "ai_pipeline_runs": {
+      "reason": "Clients start and delete runs through ScopedCollection; functions update run progress.",
+      "clientWriters": ["packages/ai_pipelines/lib/ai_pipelines_service.dart"]
+    },
+    "announcements": {
+      "reason": "Authored by members in the Announcements app; functions only fan out notifications.",
+      "clientWriters": ["packages/announcements/lib/create_announcement_screen.dart", "packages/announcements/lib/announcement_actions.dart"]
+    },
+    "app_requests": {
+      "reason": "App Maker requests are created and edited by their requesters; functions link them to dev changes.",
+      "clientWriters": ["packages/app_maker/lib/app_maker_service.dart", "packages/app_maker/lib/app_maker_detail_screen.dart"]
+    },
+    "apps": {
+      "reason": "Platform catalog with its own match block: platform admins and developers write it from App Creator. Permission fields move to a callable in T28.",
+      "clientWriters": ["packages/app_creator/lib/app_creator_screen.dart"]
+    },
+    "bets": {
+      "reason": "Created and settled by members in the Bets app.",
+      "clientWriters": ["packages/bets/lib/create_bet_screen.dart", "packages/bets/lib/bet_detail_screen.dart"]
+    },
+    "billing_disputes": {
+      "reason": "Dispute threads are opened and updated by the billed user and the billing team from the client.",
+      "clientWriters": ["packages/payments/lib/ui/dispute_chat_screen.dart"]
+    },
+    "bug_reports": {
+      "reason": "Improve Apps tickets are filed and edited by users; functions update status and links.",
+      "clientWriters": ["packages/bug_reports/lib/bug_reports_screen.dart"]
+    },
+    "calendar_calendars": {
+      "reason": "Calendar: people create, rename, share and delete their own calendars (restrictEditToCreator); calendarLeaveCalendar takes a member off one, and Sell bookings read a booking calendar's members.",
+      "clientWriters": ["packages/calendar/lib/calendar_calendars_service.dart"]
+    },
+    "calendar_events": {
+      "reason": "Calendar events are user-authored (CalendarService); functions maintain the materialized watermark (adminOnly in the table).",
+      "clientWriters": ["packages/calendar/lib/calendar_service.dart"]
+    },
+    "calendar_private_events": {
+      "reason": "Calendar: a calendar's members create and edit its events; onCalendarPrivateEventWritten and onCalendarCalendarWritten keep ownerIds equal to the calendar's members, the reminder sweep writes materializedThrough, and Sell bookings add events.",
+      "clientWriters": ["packages/calendar/lib/calendar_service.dart"]
+    },
+    "calendar_user_settings": {
+      "reason": "Personal settings with their own match block (owner read/write).",
+      "clientWriters": ["packages/calendar/lib/calendar_service.dart"]
+    },
+    "ce_profiles": {
+      "reason": "Continuing Education profiles are edited by their members.",
+      "clientWriters": ["packages/continuing_education/lib/ce_service.dart"]
+    },
+    "checkers_games": {
+      "reason": "Game state is written by players (immutableDoc in the table covers finished games).",
+      "clientWriters": ["packages/checkers/lib/lobby_screen.dart", "packages/checkers/lib/game_screen.dart"]
+    },
+    "civ_empire_games": {
+      "reason": "Players create a game once from the lobby; immutableDoc in the table blocks every later client write, and the civEmpirePlay callable makes all changes after that (its turns subcollection is serverWritten).",
+      "clientWriters": ["packages/civ_empire/lib/civ_empire_service.dart"]
+    },
+    "flock_games": {
+      "reason": "Players create a game once from the lobby; immutableDoc in the table blocks every later client write, and the flockPlay callable makes all changes after that.",
+      "clientWriters": ["packages/flock/lib/flock_service.dart"]
+    },
+    "collection_catalog": {
+      "reason": "Not client-written: its own match block denies every client write (`allow write: if false`) and functions/collection_catalog.js is the only writer. Listed here because ownMatchBlock entries don't count as server-owned for this check.",
+      "clientWriters": []
+    },
+    "contacts": {
+      "reason": "Members add and edit contacts in the Contacts app; functions/client_portal.js only sets the serverField linkedUids (client portal accounts).",
+      "clientWriters": ["packages/contacts/lib/contacts_service.dart"]
+    },
+    "conversations": {
+      "reason": "Chat conversations: participants update lastMessage; chatStartConversation and chatAddMembers (functions/chat.js) create conversations and change their membership (blockCreate, membership fields adminOnly in the table).",
+      "clientWriters": ["packages/chats/lib/chat_screen.dart"]
+    },
+    "convo_starter_history": {
+      "reason": "Functions append the sent question; the client favourites, deletes and adds entries.",
+      "clientWriters": ["packages/convo_starter/lib/convo_starter_service.dart"]
+    },
+    "convo_starter_settings": {
+      "reason": "Users edit their own schedule; functions advance nextNotifyAt.",
+      "clientWriters": ["packages/convo_starter/lib/convo_starter_service.dart"]
+    },
+    "crm_activities": {
+      "reason": "CRM: members log notes, calls, emails, meetings and stage changes on deals; crmOnInvoicingDocumentWritten adds quote events and crmDeleteDeal removes a deleted deal's log.",
+      "clientWriters": ["packages/crm/lib/crm_service.dart"]
+    },
+    "crm_deals": {
+      "reason": "CRM: members create and work deals; crmOnInvoicingDocumentWritten sets the quote fields (serverFields) and can mark a deal won, and crmDeleteDeal removes one.",
+      "clientWriters": ["packages/crm/lib/crm_service.dart"]
+    },
+    "crm_settings": {
+      "reason": "CRM: editors write the group's pipelines and settings; functions only read winOnQuoteAccepted.",
+      "clientWriters": ["packages/crm/lib/crm_service.dart"]
+    },
+    "domain_verifications": {
+      "reason": "The platform team's SES domain checklist (kind platform_admin): platform admins and developers tick steps off, delete checklists and open one for a new group's domain from the Groups admin console; updateGroupDetails retires and opens checklists when it changes an existing group's domain.",
+      "clientWriters": ["packages/groups/lib/services/groups_service.dart"]
+    },
+    "event_planner_events": {
+      "reason": "Events are organizer-authored; server-maintained fields are adminOnly in the table.",
+      "clientWriters": ["packages/event_planner/lib/event_planner_service.dart"]
+    },
+    "expense_entries": {
+      "reason": "Expenses: people write their own expenses' content; the expenses* callables and expensesOnEntryWritten write every status and decision field (serverFields), and invoicingIssue/invoicingVoid the invoice stamps.",
+      "clientWriters": ["packages/expenses/lib/expenses_service.dart"]
+    },
+    "expense_settings": {
+      "reason": "Expenses: editors write the group's categories and rules; functions only read them when an expense is submitted.",
+      "clientWriters": ["packages/expenses/lib/expenses_service.dart"]
+    },
+    "hr_checklist_templates": {
+      "reason": "HR: editors write checklist templates; hrStartChecklist only reads one to copy its tasks.",
+      "clientWriters": ["packages/hr/lib/hr_service.dart"]
+    },
+    "hr_people": {
+      "reason": "HR: editors write the staff directory; hrUpdateMyProfile edits a person's own phone, pronouns and about line, and the hr* callables and hrOnPersonWritten read it.",
+      "clientWriters": ["packages/hr/lib/hr_service.dart"]
+    },
+    "hr_settings": {
+      "reason": "HR: editors write the leave types, working week and holidays; functions only read them to count leave days.",
+      "clientWriters": ["packages/hr/lib/hr_service.dart"]
+    },
+    "inventory_items": {
+      "reason": "Inventory: editors write the item list; inventoryOnMovementCreated writes the stock levels (serverFields) as it applies movements.",
+      "clientWriters": ["packages/inventory/lib/inventory_service.dart"]
+    },
+    "inventory_locations": {
+      "reason": "Inventory: editors write the locations; inventoryOnMovementCreated only reads them to check a movement's location.",
+      "clientWriters": ["packages/inventory/lib/inventory_service.dart"]
+    },
+    "inventory_movements": {
+      "reason": "Inventory: members record stock movements; inventoryOnMovementCreated applies each one and writes its outcome (serverFields).",
+      "clientWriters": ["packages/inventory/lib/inventory_service.dart"]
+    },
+    "inventory_purchase_orders": {
+      "reason": "Inventory: editors write purchase orders; inventoryOnMovementCreated adds receipts to received (serverFields).",
+      "clientWriters": ["packages/inventory/lib/inventory_service.dart"]
+    },
+    "inventory_settings": {
+      "reason": "Inventory: editors write the group's settings and the app numbers purchase orders from its counter; inventoryOnMovementCreated only reads alertUserIds.",
+      "clientWriters": ["packages/inventory/lib/inventory_service.dart"]
+    },
+    "feature_requests": {
+      "reason": "Improve Apps feature requests are filed, voted on and edited by users.",
+      "clientWriters": ["packages/feature_voting/lib/feature_voting_screen.dart"]
+    },
+    "files": {
+      "reason": "Storage app file records are created and deleted by their uploaders; functions only read them for usage counts.",
+      "clientWriters": ["packages/storage/lib/file_sharing_screen.dart"]
+    },
+    "form_assignments": {
+      "reason": "The sender creates assignments (FormsService.assignForm) and member assignees complete their own (completeAssignments); formsSaveAssignmentByToken completes a guest's token-bound assignment, which its non-member recipient can't write.",
+      "clientWriters": ["packages/forms/lib/forms_service.dart"]
+    },
+    "forms": {
+      "reason": "Forms are built, answered and published from the client (FormsService); formsSaveAssignmentByToken saves a guest recipient's answers and rolls the status up, since the guest isn't a member of the sender's group.",
+      "clientWriters": ["packages/forms/lib/forms_service.dart"]
+    },
+    "gallery_photos": {
+      "reason": "Gallery photos are uploaded and deleted by members.",
+      "clientWriters": ["packages/gallery_app/lib/gallery_screen.dart"]
+    },
+    "improve_bluejay_subscriptions": {
+      "reason": "Users set their own Improve Apps notification subscriptions.",
+      "clientWriters": ["packages/improve_bluejay/lib/improve_bluejay_notification_settings_screen.dart"]
+    },
+    "insurance_applications": {
+      "reason": "Applicants author applications; paid/bound state is staffOnly in the table and written by the payments core.",
+      "clientWriters": [
+        "packages/commercial_property/lib/insurance_application_form_screen.dart",
+        "packages/rented_dwelling/lib/insurance_application_form_screen.dart",
+        "packages/course_of_construction/lib/insurance_application_form_screen.dart",
+        "packages/insurance_admin/lib/policy_detail_screen.dart"
+      ]
+    },
+    "invoicing_documents": {
+      "reason": "Invoices: editors write a draft's content through ScopedCollection; the invoicing callables write every state change (status, number, payments: serverFields) and issue recurring copies.",
+      "clientWriters": ["packages/invoices/lib/invoices_service.dart"]
+    },
+    "invoicing_settings": {
+      "reason": "Invoices: editors write the group's invoicing settings; functions only read them when issuing.",
+      "clientWriters": ["packages/invoices/lib/invoices_service.dart"]
+    },
+    "naic_sight_jobs": {
+      "reason": "Jobs are created and deleted by the user; functions process them (the batches subcollection is server-written).",
+      "clientWriters": ["packages/naic_sight/lib/naic_sight_screen.dart"]
+    },
+    "photo_albums": {
+      "reason": "Albums are created and edited by members.",
+      "clientWriters": ["packages/photo_albums/lib/album_detail_screen.dart", "packages/photo_albums/lib/albums_list_screen.dart"]
+    },
+    "platform_config": {
+      "reason": "Platform config with its own match block: platform admins and developers write it from the client (default apps, marketplace and pricing settings).",
+      "clientWriters": ["packages/groups/lib/services/groups_service.dart", "packages/vendor_market_core/lib/vendor_market_service.dart", "packages/usage_meter/lib/price_editor_screen.dart"]
+    },
+    "polls": {
+      "reason": "Polls are created and closed by their creators; functions/polls.js recounts each poll's results (voteCounts, voterCount, voterIds: serverFields in the table) from its ballots.",
+      "clientWriters": ["packages/polls/lib/create_poll_screen.dart", "packages/polls/lib/poll_detail_screen.dart"]
+    },
+    "projects": {
+      "reason": "Task List lists are edited by their members (membership changes go through callables; creatorOnly in the table).",
+      "clientWriters": ["packages/task_list/lib/task_list_repository.dart"]
+    },
+    "projects_hub_blockers": {
+      "reason": "Projects tasks/blockers are authored by members; functions link tickets to them.",
+      "clientWriters": ["packages/projects/lib/project_detail_screen.dart", "packages/projects/lib/projects_dashboard_screen.dart"]
+    },
+    "projects_hub_projects": {
+      "reason": "Projects are authored by members.",
+      "clientWriters": ["packages/projects/lib/projects_dashboard_screen.dart"]
+    },
+    "qr_codes": {
+      "reason": "QR codes are created and deleted by members.",
+      "clientWriters": ["packages/qr_code/lib/qr_code_generator_screen.dart", "packages/qr_code/lib/qr_codes_list_screen.dart"]
+    },
+    "recipes": {
+      "reason": "Cookbook recipes are authored by members.",
+      "clientWriters": ["packages/cookbook/lib/recipe_detail_screen.dart"]
+    },
+    "shop_sales_pages": {
+      "reason": "Sellers author direct sales pages in Sell; functions read them to serve the public page and price submissions.",
+      "clientWriters": ["packages/sell/lib/sales/sales_service.dart"]
+    },
+    "shop_sales_submissions": {
+      "reason": "Created only by shopSalesSubmit (blockCreate) and paid only by the payments core (serverFields); the seller updates status, schedule and notes from Sell.",
+      "clientWriters": ["packages/sell/lib/sales/sales_service.dart"]
+    },
+    "shop_notification_recipients": {
+      "reason": "Sellers choose who hears about their requests in Sell; functions read them to notify on a guest's paid order.",
+      "clientWriters": ["packages/sell/lib/notification_recipients_screen.dart"]
+    },
+    "shop_product_requests": {
+      "reason": "Members create requests in Shop and sellers update them in Sell; functions create a guest's (shopStorefrontCheckout) and the payments core marks it paid (serverFields).",
+      "clientWriters": ["packages/shop/lib/product_request_dialog.dart", "packages/sell/lib/admin_requests_screen.dart", "packages/sell/lib/order_management_screen.dart"]
+    },
+    "shop_products": {
+      "reason": "Sellers manage products in Sell; functions only read them to attribute legacy wood_shop/ Storage photos.",
+      "clientWriters": ["packages/sell/lib/product_detail_screen.dart"]
+    },
+    "shop_sellers": {
+      "reason": "Each seller writes their own shop info and the Sell to guests switch (guestCheckout) in Sell; functions read them to build the guest storefront.",
+      "clientWriters": ["packages/sell/lib/shop_info_screen.dart", "packages/sell/lib/guest_storefront.dart"]
+    },
+    "shop_shipping_sizes": {
+      "reason": "Sellers manage shipping sizes in Sell; functions read them to price a guest's checkout.",
+      "clientWriters": ["packages/sell/lib/shipping_size_manager_screen.dart"]
+    },
+    "signature_audit_logs": {
+      "reason": "BLOCKED: the signing audit trail should be serverWritten (plan Appendix A), but SignaturesService still appends entries from the client (_logAudit). Move that append into the signing callables first.",
+      "clientWriters": ["packages/signatures/lib/signatures_service.dart"]
+    },
+    "signature_documents": {
+      "reason": "Documents are created and edited by their senders; signed-state fields become serverFields later (Appendix A).",
+      "clientWriters": ["packages/signatures/lib/signatures_service.dart"]
+    },
+    "signature_recipients": {
+      "reason": "Recipients are added by the sender; signed-state fields become serverFields later (Appendix A).",
+      "clientWriters": ["packages/signatures/lib/signatures_service.dart"]
+    },
+    "system_report_subscriptions": {
+      "reason": "Users subscribe and unsubscribe themselves; functions read them to send reports.",
+      "clientWriters": ["packages/system_reports/lib/system_reports_screen.dart"]
+    },
+    "tap_war_games": {
+      "reason": "Game state is written by players.",
+      "clientWriters": ["packages/tap_war/lib/lobby_screen.dart", "packages/tap_war/lib/game_screen.dart"]
+    },
+    "time_entries": {
+      "reason": "Time Tracking: people log and edit their own time; invoicingIssue and invoicingVoid set and clear only the invoiceId/invoiceNumber/invoicedAt serverFields.",
+      "clientWriters": ["packages/time_tracking/lib/time_tracking_service.dart"]
+    },
+    "trivia_games": {
+      "reason": "Game state is written by the host and players (creatorOnly/protectedRoleField in the table).",
+      "clientWriters": ["packages/trivia/lib/lobby_screen.dart", "packages/trivia/lib/game_screen.dart"]
+    },
+    "usage_daily": {
+      "reason": "Each client increments its own daily usage counters, whatever app is open (memberWrite + idPattern + singleOwner/restrictEditToCreator in the table).",
+      "clientWriters": ["packages/shared_services/lib/usage_meter.dart"]
+    },
+    "users": {
+      "reason": "Profiles with their own match block; owners write their profile fields from the client. Role/status fields become serverFields of the personal kind (plan §4.5, T6).",
+      "clientWriters": ["lib/ui/auth/login_screen.dart", "packages/profile/lib/user_profile_screen.dart", "lib/services/fcm_service.dart"]
+    },
+    "vendor_market_categories": {
+      "reason": "Operator staff manage categories in Marketplace Admin through ScopedCollection; vendorHubUpdateListing only reads them to check a vendor's chosen categories.",
+      "clientWriters": ["packages/vendor_market_core/lib/vendor_market_service.dart"]
+    },
+    "vendor_market_listing_private": {
+      "reason": "Operator staff edit contact details through ScopedCollection (identity fields adminOnly in the table); claimed vendors in other groups edit theirs through vendorHubUpdateListing (functions/vendor_hub.js).",
+      "clientWriters": ["packages/vendor_market_core/lib/vendor_market_service.dart"]
+    },
+    "vendor_market_listings": {
+      "reason": "Operator staff edit listings through ScopedCollection (claim fields adminOnly in the table); claimed vendors in other groups edit theirs through vendorHubUpdateListing (functions/vendor_hub.js); the claim flow writes the claim fields.",
+      "clientWriters": ["packages/vendor_market_core/lib/vendor_market_service.dart"]
+    },
+    "vendor_market_timeline": {
+      "reason": "The organizer edits their own timeline; vendorMarketShareTimeline snapshots it into vendor_market_timeline_shares (serverWritten).",
+      "clientWriters": ["packages/vendor_market_core/lib/vendor_market_service.dart"]
+    },
+    "dashboards": {
+      "reason": "The Dashboards app creates its own dashboards and edits title, spec and pinned directly (ownerScoped, singleOwner); functions write only the request and draft serverFields (dashboardsRequest, the queue mirror, the dashboard artifact's publish and approve).",
+      "clientWriters": ["packages/dashboards/lib/src/app/dashboards_service.dart"]
+    },
+    "warehouse_dashboards": {
+      "reason": "Data Warehouse editors create and edit dashboards (writeTier edit); functions only read them, to serve dashboards shared with corporate guests (functions/_warehouse_reader_access.js).",
+      "clientWriters": ["packages/data_warehouse/lib/dashboards/dashboard_service.dart"]
+    }
+  },
+  "subcollections": {
+    "attendees": {
+      "reason": "calendar_events/{id}/attendees: inviters add/remove attendees and each attendee updates their own status (selfKeyed in the table).",
+      "clientWriters": ["packages/calendar/lib/calendar_service.dart"]
+    },
+    "comments": {
+      "reason": "Comment threads (bug_reports, feature_requests, app_requests, recipes, …) are authored by users.",
+      "clientWriters": ["packages/shared_ui/lib/comment_thread_widget.dart"]
+    },
+    "versions": {
+      "reason": "dashboards/{id}/versions: the owner records each direct edit as an immutable version (authorField creatorId in the table); the dashboard artifact's publish writes the developer agent's drafts.",
+      "clientWriters": ["packages/dashboards/lib/src/app/dashboards_service.dart"]
+    },
+    "exceptions": {
+      "reason": "calendar_events/{id}/exceptions: recurring-event exceptions are written by CalendarService.",
+      "clientWriters": ["packages/calendar/lib/calendar_service.dart"]
+    },
+    "messages": {
+      "reason": "conversations/{id}/messages: each participant writes their own messages (authorField senderId); chatAddMembers writes the server-only system messages (senderId 'system').",
+      "clientWriters": ["packages/chats/lib/chat_screen.dart"]
+    },
+    "notification_prefs": {
+      "reason": "projects_hub_projects/{id}/notification_prefs: each reader mutes or unmutes alerts for the project on their own uid-keyed doc (selfKeyed in the table); projectsOnTaskWritten only reads it.",
+      "clientWriters": ["packages/projects/lib/project_detail_screen.dart"]
+    },
+    "photo_comments": {
+      "reason": "recipes/{id}/photo_comments: members comment on a recipe's gallery photos (authorField commenterId in the table); cookbookDeletePhoto/cookbookDeleteRecipe delete them with the photo or recipe.",
+      "clientWriters": ["packages/cookbook/lib/recipe_detail_screen.dart"]
+    },
+    "photos": {
+      "reason": "photo_albums/{id}/photos and recipes/{id}/photos are uploaded by members.",
+      "clientWriters": ["packages/photo_albums/lib/album_detail_screen.dart", "packages/cookbook/lib/recipe_detail_screen.dart"]
+    },
+    "votes": {
+      "reason": "Each member writes their own vote doc (selfKeyed in the table: polls, bug_reports, feature_requests); for tickets, functions/_vote_tally.js seeds vote docs from legacy vote arrays and recounts the tallies; functions/_poll_tally.js recounts a poll's results from its ballots.",
+      "clientWriters": ["packages/shared_services/lib/vote_toggle.dart", "packages/polls/lib/poll_detail_screen.dart"]
+    }
+  }
+}

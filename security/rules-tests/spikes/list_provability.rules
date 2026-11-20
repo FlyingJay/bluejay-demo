@@ -1,0 +1,26 @@
+rules_version = '2';
+// T2 phase-1 spike (plans/firestore-rules/IMPLEMENTATION_PLAN.md, "T2 spike
+// results"): candidate rule shapes for T6, run by test/spikes.test.js. Not
+// deployed anywhere. spike_notes/spike_default derive the app scope from the
+// collection name (collection->app map, with the name itself as default);
+// spike_ctl is a control on an unconstrained field; spike_ao_* and
+// spike_cl_* are __admin_only / __required_clearance checks in three forms.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function idx() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)/metadata/access_index).data;
+    }
+    function collectionApp(c) { return {'spike_notes': 'notes', 'spike_tasks': 'task-list'}.get(c, c); }
+    function inTenant(d) { return d.groupId in idx().get('groups', []); }
+    function detail(c, d) { return idx().get('entitlements', []).hasAny([d.groupId + ':' + collectionApp(c)]); }
+
+    match /spike_notes/{id} { allow read: if inTenant(resource.data) && detail('spike_notes', resource.data); }
+    match /spike_default/{id} { allow read: if inTenant(resource.data) && detail('spike_default', resource.data); }
+    match /spike_ctl/{id} { allow read: if resource.data.x == 1; }
+    match /spike_ao_get/{id} { allow read: if inTenant(resource.data) && resource.data.get('__admin_only', false) == false; }
+    match /spike_ao_strict/{id} { allow read: if inTenant(resource.data) && resource.data.__admin_only == false; }
+    match /spike_ao_ne/{id} { allow read: if inTenant(resource.data) && resource.data.get('__admin_only', false) != true; }
+    match /spike_cl_get/{id} { allow read: if inTenant(resource.data) && idx().get('clearance_level', 0) >= resource.data.get('__required_clearance', 0); }
+    match /spike_cl_strict/{id} { allow read: if inTenant(resource.data) && idx().get('clearance_level', 0) >= resource.data.__required_clearance; }
+  }
+}

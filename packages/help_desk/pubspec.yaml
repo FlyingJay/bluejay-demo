@@ -1,0 +1,32 @@
+name: help_desk
+description: Help Desk — support requests from a group's customers and members to its admins, and from every group to Bluejay support.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  bluejay_design:
+    path: ../bluejay_design
+  bug_reports:
+    path: ../bug_reports
+  feature_voting:
+    path: ../feature_voting
+
+  cloud_functions: ^6.2.0
+  firebase_auth: ^6.1.1
+
+  shared_services:
+    path: ../shared_services
+  shared_ui:
+    path: ../shared_ui
+  wiki:
+    path: ../wiki
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

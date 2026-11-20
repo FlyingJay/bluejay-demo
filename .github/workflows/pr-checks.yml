@@ -1,0 +1,221 @@
+name: PR Checks
+
+# The quick checks every pull request gets, as steps of one job. Each used to
+# be its own workflow (Copy Rules, Release Note Check, Security Tier Audit),
+# and a job bills at least a minute however short it is, so a push cost three
+# billed minutes for about one minute of work.
+#
+#   Copy rules      Lints the lines the PR adds against COPY_RULES.md: wording
+#                   and claim decisions the owner made through the advisors
+#                   (product name spelling, no production or turnaround
+#                   claims, product vocabulary). Lines that were already there
+#                   never fail. scripts/ci/copy_lint.js.
+#   Release note    A PR that changes user-facing code must say whether end
+#                   users would notice it: "Release note: <sentence>" (plus
+#                   "Release apps: ...") or "Release note: none". Live changes
+#                   with a note become What's New entries; the rules are in
+#                   functions/_release_notes.js. Docs, tests and CI-only PRs
+#                   pass.
+#   Automation      The Automations contract (scripts/automations/contract.js):
+#   contracts       functions/automation_contract.json must be up to date
+#                   with the registries and security/collections.json, and
+#                   the PR must not remove or narrow anything saved rules,
+#                   overrides or templates depend on (an event type or
+#                   version, an exposed field or its type, an action, param,
+#                   enum value, operator, built-in or template) compared with
+#                   the base branch's snapshot, unless
+#                   functions/automation_contract_migrations.json
+#                   acknowledges it. Then scripts/automations/field_check.js:
+#                   every exposed field still appears in its app's code.
+#                   Pure Node on the function dependencies already installed;
+#                   runs on every PR, since a Dart-only change can drop a
+#                   field. documentation/automations/developer.md
+#                   ("Changing a contract") explains each failure.
+#   Security tiers  Only when the PR changes something the tier audit reads
+#                   (the tier_audit suite in scripts/ci/suite_inputs.js, the
+#                   same files as the train's security_audit target). Computes
+#                   what security tier the policy table and functions support
+#                   per app (scripts/security_tier_audit, SECURITY_TIERS.md),
+#                   comments with every computed-tier change and fails on the
+#                   ones findTierRegressions rejects: lowering an app that had
+#                   earned business or regulated, or dropping any app below
+#                   its declared tier. Other decreases stay informational. The
+#                   `security-tier-decrease-approved` label approves a
+#                   rejected decrease. It reads apps/{appId} (read-only) so
+#                   Tier 3/4 facts are real; PRs from forks get no credentials
+#                   and only the informational diff. The deploy train writes
+#                   the computed tiers once the change is on main
+#                   (deploy-production.yml, `finish`).
+#
+# Every step runs even when an earlier one failed, so one run reports every
+# result.
+#
+# Triggers: new commits (opened/reopened/synchronize), ready_for_review (a
+# draft PR runs nothing until it's marked ready), body edits (the release
+# note lives in the body) and the approval label being added or removed. The
+# job `if:` drops the events that can't change a verdict: a title-only or
+# base-only edit and any other label. Every run that starts does all three
+# checks, so a body edit that replaces a run still in progress loses nothing.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write # the security tier comment
+
+jobs:
+  checks:
+    name: PR checks
+    if: >-
+      github.event.pull_request.draft != true
+      && (github.event.action != 'edited' || github.event.changes.body)
+      && (!contains(fromJSON('["labeled", "unlabeled"]'), github.event.action)
+        || github.event.label.name == 'security-tier-decrease-approved')
+    # Job-level, not workflow-level, so a run the `if:` skips (another label,
+    # a title edit) never enters the group and can't cancel a run with work
+    # to do.
+    concurrency:
+      group: pr-checks-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # The copy lint and the tier diff compare against the base branch,
+          # which must be present locally: full history.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            functions/package-lock.json
+            scripts/security_tier_audit/package-lock.json
+
+      - name: Copy rules
+        run: node scripts/ci/copy_lint.js --base "origin/${{ github.base_ref }}"
+
+      - name: Install Function Dependencies
+        if: ${{ !cancelled() }}
+        run: npm ci --omit=dev --no-audit --no-fund
+        working-directory: functions
+
+      - name: Release note
+        if: ${{ !cancelled() }}
+        run: node scripts/check_release_note.js
+        working-directory: functions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Automation contracts
+        if: ${{ !cancelled() }}
+        run: node scripts/automations/contract.js --check --diff "origin/${{ github.base_ref }}"
+
+      - name: Automation fields are still written
+        if: ${{ !cancelled() }}
+        run: node scripts/automations/field_check.js
+
+      - name: Does the PR change what the tier audit reads?
+        id: plan
+        if: ${{ !cancelled() }}
+        run: node scripts/ci/suite_inputs.js changed --base "origin/${{ github.base_ref }}" --suites tier_audit >> "$GITHUB_OUTPUT"
+
+      - name: Install tier audit dependencies
+        if: ${{ !cancelled() && steps.plan.outputs.tier_audit == 'true' }}
+        run: npm ci --no-audit --no-fund
+        working-directory: scripts/security_tier_audit
+
+      - name: Check feature appIds match registered apps (warning only, no credentials needed)
+        # Warning only, not a blocker: a feature's appId can legitimately have
+        # no registered apps/{docId} yet for a while (e.g. a brand-new
+        # prototype app shipped before it's registered in App Manager) — see
+        # check_app_ids.js's header for what that degrades (group-based
+        # access) versus what it doesn't (no security exposure; the rules
+        # default-deny).
+        if: ${{ !cancelled() && steps.plan.outputs.tier_audit == 'true' }}
+        continue-on-error: true
+        run: node audit.js --check-app-ids
+        working-directory: scripts/security_tier_audit
+
+      - name: Create Service Account Key File
+        # Read-only use (apps/{appId} for Tier 3/4 facts); the same secret
+        # deploy.yml's preview step already gets. Not available to forks.
+        # Created after the copy and release-note steps, which never see it.
+        if: ${{ !cancelled() && steps.plan.outputs.tier_audit == 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          SA_DIR="$(mktemp -d)"
+          chmod 700 "$SA_DIR"
+          SA_PATH="$SA_DIR/firebase-sa.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_BLUEJAY" > "$SA_PATH"
+          chmod 600 "$SA_PATH"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$SA_PATH" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT_BLUEJAY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BLUEJAY }}
+
+      - name: Security tiers
+        id: diff
+        if: ${{ !cancelled() && steps.plan.outputs.tier_audit == 'true' }}
+        env:
+          SECURITY_TIER_DECREASE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'security-tier-decrease-approved') }}
+        run: |
+          FLAGS=()
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]; then
+            FLAGS=(--with-declared --fail-on-regression)
+          fi
+          set +e
+          OUTPUT=$(node audit.js --diff "origin/${{ github.base_ref }}" "${FLAGS[@]}")
+          STATUS=$?
+          set -e
+          echo "$OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          {
+            echo 'result<<EOF'
+            echo "$OUTPUT"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+        working-directory: scripts/security_tier_audit
+
+      # One comment per PR, updated in place: a body edit or a new push
+      # re-runs the audit, and a new comment each time would bury the thread.
+      - name: Comment on PR if any app's computed tier changed
+        if: ${{ !cancelled() && steps.diff.outcome == 'success' && !contains(steps.diff.outputs.result, 'No computed security tier changes') }}
+        uses: actions/github-script@v7
+        env:
+          DIFF_RESULT: ${{ steps.diff.outputs.result }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const marker = '<!-- security-tier-audit -->';
+            const body = [
+              marker,
+              '### Security tier audit',
+              '',
+              'This PR changes the computed security tier for at least one app (see `SECURITY_TIERS.md` and `scripts/security_tier_audit/`):',
+              '',
+              '```',
+              process.env.DIFF_RESULT,
+              '```',
+              '',
+              'Lowering an app that had earned business or regulated, or dropping an app below its declared tier, fails this check: restore the protections, or add the `security-tier-decrease-approved` label if the decrease is intended. Other changes are informational. See the checklist in `SECURITY_TIERS.md` for what each tier requires.',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            const existing = comments.find((c) => c.user?.type === 'Bot' && (c.body || '').startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Fail on an unapproved tier regression
+        if: ${{ !cancelled() && steps.diff.outcome == 'success' && steps.diff.outputs.status != '0' }}
+        run: |
+          echo "A computed security tier regression needs approval; see the Security tiers step's output."
+          exit 1

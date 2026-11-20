@@ -1,0 +1,18 @@
+name: bluejay_design
+description: Bluejay's design system — tokens, the shared Material 3 theme, accessible accent colors, and core layout/state components every app builds on.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=1.17.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  animations: ^2.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

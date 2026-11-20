@@ -1,0 +1,50 @@
+{
+  "packages/ai_pipelines/lib/agent_profile_editor_screen.dart": {
+    "font-size": 5
+  },
+  "packages/ai_pipelines/lib/ai_pipelines_screen.dart": {
+    "color-literal": 1,
+    "font-size": 8,
+    "raw-color": 2
+  },
+  "packages/ai_pipelines/lib/ai_pipelines_theme.dart": {
+    "color-literal": 17,
+    "font-size": 7,
+    "theme-file": 1
+  },
+  "packages/ai_pipelines/lib/pipeline_editor_screen.dart": {
+    "font-size": 8
+  },
+  "packages/ai_pipelines/lib/pipeline_run_screen.dart": {
+    "color-literal": 4,
+    "font-size": 7
+  },
+  "packages/nearby_places/lib/nearby_places_screen.dart": {
+    "font-size": 6
+  },
+  "packages/nearby_places/lib/nearby_places_theme.dart": {
+    "color-literal": 16,
+    "font-size": 11,
+    "theme-file": 1
+  },
+  "packages/profile/lib/user_profile_screen.dart": {
+    "raw-color": 3
+  },
+  "packages/shared_services/lib/insurance/insurance_payment_step.dart": {
+    "color-literal": 1,
+    "font-size": 2,
+    "raw-color": 2
+  },
+  "packages/shared_services/lib/insurance/payment_not_verified_badge.dart": {
+    "color-literal": 6,
+    "font-size": 1
+  },
+  "packages/thesisly/lib/thesisly_theme.dart": {
+    "color-literal": 5,
+    "theme-file": 1
+  },
+  "packages/town_square/lib/town_square_screen.dart": {
+    "font-size": 9,
+    "raw-color": 8
+  }
+}

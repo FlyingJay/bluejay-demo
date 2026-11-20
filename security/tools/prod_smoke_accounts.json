@@ -1,0 +1,7 @@
+{
+  "comment": "Accounts security/tools/prod_smoke.js signs in as (custom tokens, read-only probes against production). Each must be ACTIVE, hold no platform role (admin/developer grant cross-group reads, which would hide a missing tenant check), belong to `group` and not to the other persona's group. uids are not secrets. Both are existing internal bluejay.gg accounts.",
+  "personas": [
+    { "name": "admin-member", "uid": "AJ6Xnjw0y4f8YhRtzmovTbDb2Qb2", "email": "jay5@bluejay.gg", "group": "admin" },
+    { "name": "games-member", "uid": "GmCKgjL4DUYlkIpiKI32oxaw1682", "email": "jay6@bluejay.gg", "group": "games" }
+  ]
+}

@@ -1,0 +1,61 @@
+name: Register apps
+description: >-
+  Registers apps declared by packages/<package>/bluejay_app.json manifests
+  (scripts/firestore_admin/sync_app_manifests.js) and applies the Add Apps
+  store copy (scripts/app_listing/sync_store_copy.js). Shared by
+  register-apps.yml (manual runs) and the deploy train's finish job, which
+  runs it after every successful live web deploy. The caller checks out the
+  commit to register, sets up Node and puts the service account key path in
+  GOOGLE_APPLICATION_CREDENTIALS.
+
+inputs:
+  confirm:
+    description: "'true' makes the writes; anything else is a dry run that prints the plan."
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Install dependencies
+      shell: bash
+      run: npm ci --no-audit --no-fund
+      working-directory: scripts/firestore_admin
+
+    - name: Sync app manifests
+      shell: bash
+      working-directory: scripts/firestore_admin
+      env:
+        CONFIRM: ${{ inputs.confirm }}
+      run: |
+        if [ "$CONFIRM" = "true" ]; then FLAG=--confirm; else FLAG=; fi
+        status=0
+        node sync_app_manifests.js $FLAG > /tmp/sync.log 2>&1 || status=$?
+        cat /tmp/sync.log
+        {
+          echo '### App manifest sync'
+          echo '```'
+          cat /tmp/sync.log
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit "$status"
+
+    # Runs after the manifest sync even when that reported a problem, so
+    # one bad manifest doesn't hold back every app's store copy.
+    - name: Sync store copy
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        CONFIRM: ${{ inputs.confirm }}
+      run: |
+        if [ "$CONFIRM" = "true" ]; then FLAG=--confirm; else FLAG=; fi
+        status=0
+        node scripts/app_listing/sync_store_copy.js $FLAG > /tmp/store_copy.log 2>&1 || status=$?
+        cat /tmp/store_copy.log
+        {
+          echo '### Store copy sync'
+          echo '```'
+          cat /tmp/store_copy.log
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit "$status"

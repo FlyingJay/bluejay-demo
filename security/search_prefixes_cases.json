@@ -1,0 +1,451 @@
+{
+  "comment": "Shared cases for record search prefixes: functions/_search_prefixes.js and packages/shared_services/lib/search_prefixes.dart must both produce exactly these. Regenerate expectations only on purpose, and change both implementations together.",
+  "records": [
+    {
+      "name": "contact with phone and email",
+      "config": {
+        "fields": [
+          "name",
+          "organizationName",
+          "emails",
+          "phones"
+        ],
+        "digitFields": [
+          "phones"
+        ]
+      },
+      "data": {
+        "name": "José Smith-Jones",
+        "organizationName": "Acme Ltd.",
+        "emails": [
+          "jose@acme.com"
+        ],
+        "phones": [
+          "+1 (604) 555-1234"
+        ]
+      },
+      "prefixes": [
+        "jo",
+        "jos",
+        "jose",
+        "sm",
+        "smi",
+        "smit",
+        "smith",
+        "jon",
+        "jone",
+        "jones",
+        "ac",
+        "acm",
+        "acme",
+        "lt",
+        "ltd",
+        "co",
+        "com",
+        "60",
+        "604",
+        "55",
+        "555",
+        "12",
+        "123",
+        "1234",
+        "16",
+        "160",
+        "1604",
+        "16045",
+        "160455",
+        "1604555",
+        "16045551",
+        "160455512",
+        "1604555123",
+        "6045",
+        "60455",
+        "604555",
+        "6045551",
+        "60455512",
+        "604555123",
+        "6045551234",
+        "5551",
+        "55512",
+        "555123",
+        "5551234"
+      ]
+    },
+    {
+      "name": "nested map fields",
+      "config": {
+        "fields": [
+          "title",
+          "contact.name",
+          "contact.organization"
+        ]
+      },
+      "data": {
+        "title": "Spring renovation",
+        "contact": {
+          "name": "Zoë Ng",
+          "organization": "Café Crème"
+        }
+      },
+      "prefixes": [
+        "sp",
+        "spr",
+        "spri",
+        "sprin",
+        "spring",
+        "re",
+        "ren",
+        "reno",
+        "renov",
+        "renova",
+        "renovat",
+        "renovati",
+        "renovatio",
+        "renovation",
+        "zo",
+        "zoe",
+        "ng",
+        "ca",
+        "caf",
+        "cafe",
+        "cr",
+        "cre",
+        "crem",
+        "creme"
+      ]
+    },
+    {
+      "name": "non-Latin scripts and ligatures",
+      "config": {
+        "fields": [
+          "name"
+        ]
+      },
+      "data": {
+        "name": "Straße Æsir Œuvre Łódź 東京タワー Москва"
+      },
+      "prefixes": [
+        "st",
+        "str",
+        "stra",
+        "stras",
+        "strass",
+        "strasse",
+        "ae",
+        "aes",
+        "aesi",
+        "aesir",
+        "oe",
+        "oeu",
+        "oeuv",
+        "oeuvr",
+        "oeuvre",
+        "lo",
+        "lod",
+        "lodz",
+        "東京",
+        "東京タ",
+        "東京タワ",
+        "東京タワー",
+        "мо",
+        "мос",
+        "моск",
+        "москв",
+        "москва"
+      ]
+    },
+    {
+      "name": "numbers and one-letter words",
+      "config": {
+        "fields": [
+          "number",
+          "client.name"
+        ]
+      },
+      "data": {
+        "number": "INV-0042",
+        "client": {
+          "name": "J R Tolkien"
+        }
+      },
+      "prefixes": [
+        "in",
+        "inv",
+        "00",
+        "004",
+        "0042",
+        "to",
+        "tol",
+        "tolk",
+        "tolki",
+        "tolkie",
+        "tolkien"
+      ]
+    },
+    {
+      "name": "missing and non-string fields",
+      "config": {
+        "fields": [
+          "name",
+          "sku",
+          "qty"
+        ]
+      },
+      "data": {
+        "name": null,
+        "sku": 12345,
+        "qty": {
+          "a": 1
+        }
+      },
+      "prefixes": [
+        "12",
+        "123",
+        "1234",
+        "12345"
+      ]
+    },
+    {
+      "name": "soft-deleted record",
+      "config": {
+        "fields": [
+          "name"
+        ]
+      },
+      "data": {
+        "name": "Gone",
+        "deletedAt": {
+          "seconds": 1
+        }
+      },
+      "prefixes": []
+    },
+    {
+      "name": "hidden when archived",
+      "config": {
+        "fields": [
+          "name"
+        ],
+        "hiddenWhen": [
+          "archived"
+        ]
+      },
+      "data": {
+        "name": "Old widget",
+        "archived": true
+      },
+      "prefixes": []
+    },
+    {
+      "name": "not hidden when archived is false",
+      "config": {
+        "fields": [
+          "name"
+        ],
+        "hiddenWhen": [
+          "archived"
+        ]
+      },
+      "data": {
+        "name": "Widget",
+        "archived": false
+      },
+      "prefixes": [
+        "wi",
+        "wid",
+        "widg",
+        "widge",
+        "widget"
+      ]
+    },
+    {
+      "name": "long words stop at ten characters",
+      "config": {
+        "fields": [
+          "name"
+        ]
+      },
+      "data": {
+        "name": "Supercalifragilistic"
+      },
+      "prefixes": [
+        "su",
+        "sup",
+        "supe",
+        "super",
+        "superc",
+        "superca",
+        "supercal",
+        "supercali",
+        "supercalif"
+      ]
+    },
+    {
+      "name": "capped at 80 prefixes",
+      "config": {
+        "fields": [
+          "name"
+        ]
+      },
+      "data": {
+        "name": "alphabetical bookkeeping candlestick dragonflies earthenware fingerprint grasshopper hummingbird ironworking jellyfishes kaleidoscope"
+      },
+      "prefixes": [
+        "al",
+        "alp",
+        "alph",
+        "alpha",
+        "alphab",
+        "alphabe",
+        "alphabet",
+        "alphabeti",
+        "alphabetic",
+        "bo",
+        "boo",
+        "book",
+        "bookk",
+        "bookke",
+        "bookkee",
+        "bookkeep",
+        "bookkeepi",
+        "bookkeepin",
+        "ca",
+        "can",
+        "cand",
+        "candl",
+        "candle",
+        "candles",
+        "candlest",
+        "candlesti",
+        "candlestic",
+        "dr",
+        "dra",
+        "drag",
+        "drago",
+        "dragon",
+        "dragonf",
+        "dragonfl",
+        "dragonfli",
+        "dragonflie",
+        "ea",
+        "ear",
+        "eart",
+        "earth",
+        "earthe",
+        "earthen",
+        "earthenw",
+        "earthenwa",
+        "earthenwar",
+        "fi",
+        "fin",
+        "fing",
+        "finge",
+        "finger",
+        "fingerp",
+        "fingerpr",
+        "fingerpri",
+        "fingerprin",
+        "gr",
+        "gra",
+        "gras",
+        "grass",
+        "grassh",
+        "grassho",
+        "grasshop",
+        "grasshopp",
+        "grasshoppe",
+        "hu",
+        "hum",
+        "humm",
+        "hummi",
+        "hummin",
+        "humming",
+        "hummingb",
+        "hummingbi",
+        "hummingbir",
+        "ir",
+        "iro",
+        "iron",
+        "ironw",
+        "ironwo",
+        "ironwor",
+        "ironwork",
+        "ironworki"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "query": "jo",
+      "terms": [
+        "jo"
+      ],
+      "primary": "jo"
+    },
+    {
+      "query": "  Zoë   o'Brien ",
+      "terms": [
+        "zoe",
+        "brien"
+      ],
+      "primary": "brien"
+    },
+    {
+      "query": "Smith J",
+      "terms": [
+        "smith"
+      ],
+      "primary": "smith"
+    },
+    {
+      "query": "604-555",
+      "terms": [
+        "604",
+        "555"
+      ],
+      "primary": "604"
+    },
+    {
+      "query": "6045551234",
+      "terms": [
+        "6045551234"
+      ],
+      "primary": "6045551234"
+    },
+    {
+      "query": "x",
+      "terms": [],
+      "primary": null
+    },
+    {
+      "query": "INV-0042",
+      "terms": [
+        "inv",
+        "0042"
+      ],
+      "primary": "0042"
+    },
+    {
+      "query": "東京",
+      "terms": [
+        "東京"
+      ],
+      "primary": "東京"
+    },
+    {
+      "query": "supercalifragilistic expialidocious",
+      "terms": [
+        "supercalif",
+        "expialidoc"
+      ],
+      "primary": "supercalif"
+    },
+    {
+      "query": "jo jo",
+      "terms": [
+        "jo"
+      ],
+      "primary": "jo"
+    }
+  ]
+}

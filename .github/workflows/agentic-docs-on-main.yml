@@ -1,0 +1,56 @@
+name: Agentic Docs On Main
+
+# This workflow does NOT spin up any agent. It only records which
+# documentation features the commits merged since the last run touched,
+# cheaply, so that the nightly docs batch (the `nightly-docs-batch` Claude
+# Code skill, run by a scheduled session) can later document each feature
+# once per night, covering everything that landed that day. See
+# documentation/.pending_doc_changes.json.
+#
+# The deploy train (deploy-production.yml) does this as its `docs_pending`
+# target (functions/_deploy_targets.js), a step of its `finish` job, with the
+# commit its `deployed/docs_pending` tag marks, so every train records all
+# the merges since the last one in a single commit (one entry per commit and
+# feature, scripts/docs/record_pending_entries.js) instead of one commit per
+# merge. The steps are in .github/actions/record-pending-docs, which the
+# train and this workflow share; this workflow is for running it by hand.
+# The target's paths are every path minus documentation/, plus
+# documentation/.docs_batch_processed.json: no feature in
+# feature_doc_mapping.json watches documentation/ (workflow_triggers.test.js
+# checks), so docs merges and the recording's own commits never need a run.
+#
+# It also keeps the processed-state handshake small: the nightly docs PR never
+# edits the pending log (this workflow rewrites it), so it records the
+# `slug:mergeSha` keys it documented in
+# documentation/.docs_batch_processed.json instead. The train after that PR
+# merges lands here: entries whose keys are processed are pruned from
+# pending, then processed is trimmed to keys still pending (normally to
+# empty). Logic: scripts/docs/nightly_docs_batch.js reconcilePendingState().
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'Record the commits after this one up to the branch head (blank: the head commit only).'
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  record_pending_changes:
+    name: Record pending doc changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Record pending doc changes
+        uses: ./.github/actions/record-pending-docs
+        with:
+          base: ${{ inputs.base }}
+          token: ${{ secrets.BLUEJAY_PAT }}

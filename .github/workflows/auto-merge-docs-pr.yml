@@ -1,0 +1,153 @@
+name: Auto-merge Documentation PRs
+
+# Merges documentation-only PRs (documentation/ files, plus documentation
+# asset lines in pubspec.yaml), public page content PRs (web/about/ and the
+# landing page in web/index.html) once their checks pass, and the prose and
+# copy-only PRs advisor rounds open on claude/advisor-* branches once their
+# checks pass. The lanes and the
+# guarded files that always need the owner are in scripts/ci/pr_lanes.js; the
+# merge logic is in scripts/ci/docs_pr_automerge.js.
+#
+# pull_request_target + checking out the default branch means the eligibility
+# rules always come from main, never from the PR being judged.
+#
+# Triggers:
+#   pull_request_target  the PR itself was opened / pushed to / marked ready,
+#                        or edited (an author drops "[WIP]" from the title
+#                        when it finishes; [WIP] PRs are never merged). Only
+#                        PRs touching documentation/, pubspec.yaml, markdown or
+#                        the public pages start a run (`paths`): a docs-only PR
+#                        must touch one of the first two, an advisor prose PR
+#                        touches markdown, and a pages PR touches web/about/ or
+#                        web/index.html. An advisor
+#                        copy PR that changes only code files starts from
+#                        workflow_run instead, since it waits on checks anyway.
+#   workflow_run         a docs branch's build/test checks finished, so a
+#                        pubspec.yaml docs PR that was waiting on them can
+#                        merge now. Only the docs branch prefixes start a job
+#                        (claude/docs-*, docs/*), along with advisor branches
+#                        (claude/advisor-*) and public page branches
+#                        (claude/pages-*); an eligible PR on another branch
+#                        merges on the next sweep instead.
+#   push (main, docs)    a docs or pages PR just merged: sweep up any PR whose own merge
+#                        raced it ("Base branch was modified") or whose run was
+#                        dropped.
+#   schedule/dispatch    backstop sweep. GitHub throttles `schedule` hard (it
+#                        fired ~3 times a day), so it can't be the only retry.
+#
+# The job `if:` keeps runs that can't merge anything from starting a runner:
+#   - a draft PR (docs_pr_automerge.js never merges one; marking it ready is a
+#     ready_for_review event that runs),
+#   - a "[WIP] …" PR (never merged; its rename is an `edited` event that runs),
+#   - an `edited` event that changed only the body (eligibility depends on the
+#     title, files and base, not the body),
+#   - a workflow_run that wasn't a PR's checks succeeding (failed checks can't
+#     unblock a PR; nightly/push runs carry no PR), or whose head branch isn't
+#     a docs branch (code PRs finish these checks dozens of times a day),
+#   - a push to main that only touched documentation/.pending_doc_changes.json
+#     and/or .docs_batch_processed.json (the docs_pending target's bookkeeping
+#     commits, via `paths`; a nightly docs PR merge also touches real docs, so
+#     it still sweeps).
+# Build and Deploy, Tests and PR Checks (the copy rules and the release note
+# check) are the workflows that gate a docs or advisor PR's merge for long
+# enough to matter.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+    paths:
+      - 'documentation/**'
+      - 'pubspec.yaml'
+      - '**/*.md'
+      - 'web/about/**'
+      - 'web/index.html'
+  workflow_run:
+    workflows: ['Build and Deploy', 'Tests', 'PR Checks']
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - 'documentation/**'
+      - '!documentation/.pending_doc_changes.json'
+      - '!documentation/.docs_batch_processed.json'
+      - 'pubspec.yaml'
+      - 'web/about/**'
+      - 'web/index.html'
+  schedule:
+    - cron: '7,27,47 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  auto-merge-docs:
+    name: Auto-merge if documentation-only
+    if: >-
+      (github.event_name == 'pull_request_target'
+        && github.event.pull_request.draft != true
+        && !startsWith(github.event.pull_request.title, '[WIP]')
+        && (github.event.action != 'edited' || github.event.changes.title || github.event.changes.base))
+      || (github.event_name == 'workflow_run'
+        && github.event.workflow_run.event == 'pull_request'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.pull_requests[0] != null
+        && (startsWith(github.event.workflow_run.head_branch, 'claude/docs-')
+          || startsWith(github.event.workflow_run.head_branch, 'docs/')
+          || startsWith(github.event.workflow_run.head_branch, 'claude/advisor-')
+          || startsWith(github.event.workflow_run.head_branch, 'claude/pages-')))
+      || contains(fromJSON('["push", "schedule", "workflow_dispatch"]'), github.event_name)
+    # Per PR, never one global group: GitHub keeps at most one running + one
+    # pending run per group and cancels the rest, so a global group silently
+    # dropped most runs whenever a burst of docs PRs pushed at once, leaving them
+    # stuck in draft. Runs for different PRs may race each other's merges; the
+    # script retries "Base branch was modified". Sweeps share one group: dropping
+    # a queued sweep is harmless, since the running one re-checks every open PR.
+    # Job-level so a run the `if:` skips never replaces a waiting one.
+    concurrency:
+      group: docs-automerge-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || 'sweep' }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the default branch (never the PR's code)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Self-test the merge rules
+        run: node --test scripts/ci/docs_pr_automerge.test.js scripts/ci/pr_lanes.test.js
+
+      - name: Auto-merge this PR
+        if: github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ secrets.BLUEJAY_PAT }}
+          GH_READ_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/ci/docs_pr_automerge.js --pr "${{ github.event.pull_request.number }}"
+
+      - name: Auto-merge the PR(s) whose checks just finished
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.BLUEJAY_PAT }}
+          GH_READ_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBERS: ${{ join(github.event.workflow_run.pull_requests.*.number, ' ') }}
+        run: |
+          for n in $PR_NUMBERS; do
+            node scripts/ci/docs_pr_automerge.js --pr "$n"
+          done
+
+      - name: Sweep eligible open docs PRs
+        if: contains(fromJSON('["push", "schedule", "workflow_dispatch"]'), github.event_name)
+        env:
+          GH_TOKEN: ${{ secrets.BLUEJAY_PAT }}
+          GH_READ_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/ci/docs_pr_automerge.js --sweep

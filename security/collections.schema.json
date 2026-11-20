@@ -1,0 +1,511 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "collections.schema.json",
+  "title": "bluejay collection policy table",
+  "description": "Per-collection Firestore policy. security/generate.js turns it into firestore.rules' generated sections (collectionPolicy() and its small companion tables). A collection with no entry is kind tenant, scoped by its docs' appId. See plans/firestore-rules/IMPLEMENTATION_PLAN.md 2.3 and 2.4.",
+  "type": "object",
+  "required": [
+    "collections"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "collections": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_]+$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "exceptions": {
+      "type": "object",
+      "description": "Reviewed exceptions: every rules construct that grants access without the generic tenant rule. security/check_rules_exceptions.js fails CI on any match block in firestore.rules or storage.rules that is neither the generic rule nor listed here, on a listed block that no longer exists, and on an entry without why/reviewed.",
+      "propertyNames": {
+        "pattern": "^EX-[A-Z0-9]+(-[A-Z0-9]+)*-[0-9]+$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/exception"
+      }
+    }
+  },
+  "$defs": {
+    "automationBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "fields"],
+      "properties": {
+        "label": { "type": "string", "description": "What the Automations editor calls these records (\"Deals\")." },
+        "events": { "type": "array", "items": { "enum": ["record.created", "record.updated", "record.deleted"] }, "minItems": 1 },
+        "fields": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "fieldTypes": {
+          "type": "object",
+          "additionalProperties": { "enum": ["string", "number", "boolean", "date", "list", "map", "uid"] },
+          "description": "Field -> type, so the editor can offer the right comparisons. dateFields are dates without listing them."
+        },
+        "dateFields": { "type": "array", "items": { "type": "string" } },
+        "webhookFields": { "type": "array", "items": { "type": "string" } },
+        "writableFields": { "type": "array", "items": { "type": "string" }, "description": "Narrows the fields an automation's record.update may set (a subset of fields). The generator also leaves out every field the policy locks." },
+        "fieldCheck": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 },
+          "description": "Field -> where the app writes it, for an exposed field scripts/automations/field_check.js can't find as a quoted key in the app's code. Only when truly needed; not generated."
+        }
+      }
+    },
+    "fieldList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "exception": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "what",
+        "why",
+        "reviewed"
+      ],
+      "properties": {
+        "what": {
+          "type": "string",
+          "minLength": 10,
+          "description": "What the exception grants, in one sentence."
+        },
+        "why": {
+          "type": "string",
+          "minLength": 20,
+          "description": "Why the generic tenant rule can't express it, and any known caveat."
+        },
+        "reviewed": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Date (YYYY-MM-DD) the code owner last reviewed this entry."
+        },
+        "firestoreMatchBlocks": {
+          "$ref": "#/$defs/fieldList",
+          "description": "firestore.rules match paths this exception approves, relative to /databases/{database}/documents (nested blocks joined, e.g. /a/{id}/b/{bid})."
+        },
+        "storageMatchBlocks": {
+          "$ref": "#/$defs/fieldList",
+          "description": "storage.rules match paths this exception approves, relative to /b/{bucket}/o."
+        },
+        "ruleFunctions": {
+          "$ref": "#/$defs/fieldList",
+          "description": "firestore.rules grant* functions this exception approves: a grant* function that doesn't call inTenant() must be listed here."
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "comment": {
+          "type": "string",
+          "description": "Why the entry exists. Emitted as a // comment above it."
+        },
+        "kind": {
+          "enum": [
+            "tenant",
+            "server",
+            "personal",
+            "platform",
+            "platform_admin",
+            "public"
+          ],
+          "description": "tenant (default): inTenant + detail. server: Admin SDK writes only; readerField == uid or admin reads (emits blockCreate/Update/Delete + serverOnly). personal: the doc id is the caller's uid. platform: any signed-in user reads; adminWritable/developerWritable write. platform_admin: admin (+developerRead) reads. public (D2, plan 2.7): published projections of a tenant collection (`source`), named public_<source>; any signed-in user reads, no client writes (only the publicPublish/publicUnpublish callables and the re-sync trigger write it)."
+        },
+        "apps": {
+          "$ref": "#/$defs/fieldList",
+          "description": "The app ids whose docs live here. One app: the entitlement scope comes from the collection, so `groupId ==` alone proves a list query. Several: the doc's appId (the shim adds `appId ==`). On create the doc's appId must be one of them. On kind server it only names the owning app (for the security tier audit); the rules ignore it there."
+        },
+        "readerField": {
+          "type": "string",
+          "description": "The field holding the one uid that may read the doc whatever its group (kind server: the only non-admin read; tenant: an extra personal read, e.g. memberships.userId)."
+        },
+        "readerMayUpdate": {
+          "$ref": "#/$defs/fieldList",
+          "description": "With kind server + readerField: the only fields the reader (the uid in readerField) may change on their own doc from the client, e.g. a notification's isRead. Every other write stays server-only. Emitted into its own generated readerWrites() function, enforced by canReaderUpdate()."
+        },
+        "readerMayDelete": {
+          "const": true,
+          "description": "With kind server + readerField: the reader may delete their own doc from the client (e.g. clearing their notification inbox). Emitted into readerWrites(), enforced by canReaderDelete()."
+        },
+        "serverWritten": {
+          "const": true,
+          "description": "Admin SDK is the only writer; reads keep the tenant rule (plus readerField/readerListField). Emits blockCreate/blockUpdate/blockDelete."
+        },
+        "blockCreate": {
+          "type": "boolean"
+        },
+        "blockUpdate": {
+          "type": "boolean"
+        },
+        "blockDelete": {
+          "type": "boolean"
+        },
+        "immutableDoc": {
+          "type": "boolean"
+        },
+        "singleOwner": {
+          "type": "boolean"
+        },
+        "restrictEditToCreator": {
+          "type": "boolean"
+        },
+        "immutable": {
+          "$ref": "#/$defs/fieldList"
+        },
+        "creatorOnly": {
+          "$ref": "#/$defs/fieldList"
+        },
+        "ownerOnly": {
+          "$ref": "#/$defs/fieldList"
+        },
+        "adminOnly": {
+          "$ref": "#/$defs/fieldList"
+        },
+        "serverFields": {
+          "$ref": "#/$defs/fieldList",
+          "description": "Fields no client may set, on create or update; only the Admin SDK writes them (e.g. apps' permission fields, written by appsUpdatePermissions). Emitted into its own generated serverFields() function (not collectionPolicy()) and enforced by keepsServerFields() on create and update."
+        },
+        "adminWritable": {
+          "const": true,
+          "description": "EX-ADMIN-1 (D4c): platform admins write it from the client, across tenants (never serverFields or locked fields). Every other admin write goes through a callable."
+        },
+        "protectedRoleField": {
+          "type": "string"
+        },
+        "staffOnly": {
+          "$ref": "#/$defs/fieldList"
+        },
+        "staffApps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 2
+        },
+        "staffOnlyAppIds": {
+          "$ref": "#/$defs/fieldList"
+        },
+        "staffOnlyValues": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "field",
+            "values"
+          ],
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "values": {
+              "$ref": "#/$defs/fieldList"
+            }
+          }
+        },
+        "subcollections": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9_]+$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "comment": {
+                "type": "string"
+              },
+              "automation": {
+                "$ref": "#/$defs/automationBlock",
+                "description": "As the collection-level automation block, for this subcollection: a source keyed `<collection>/<subcollection>` whose group comes from the parent doc. No dateFields. Server config only; generates nothing into the rules."
+              },
+              "auditExempt": {
+                "type": "string",
+                "minLength": 20,
+                "description": "As the collection-level auditExempt, for this subcollection (an append-only ledger under an audited parent, say)."
+              },
+              "serverWritten": {
+                "const": true,
+                "description": "Admin SDK is the only writer of this subcollection: the generic subcollection rule grants no client create/update/delete (not even to platform admins). Reads keep the parent's read rule. Emitted into serverWrittenSubcollections()."
+              },
+              "selfKeyed": {
+                "type": "object",
+                "description": "Doc id is a uid; that user may write `fields` on their own doc, while the parent isn't soft-deleted (deletedAt). Nobody else writes it unless editorsWrite: editors of the parent (the parent's edit grant) also create, update and delete any doc in it. Emitted into selfKeyedSubcollections().",
+                "additionalProperties": false,
+                "required": [
+                  "fields",
+                  "selfCreate",
+                  "selfDelete"
+                ],
+                "properties": {
+                  "fields": {
+                    "$ref": "#/$defs/fieldList"
+                  },
+                  "selfCreate": {
+                    "type": "boolean"
+                  },
+                  "selfDelete": {
+                    "type": "boolean"
+                  },
+                  "editorsWrite": {
+                    "type": "boolean",
+                    "description": "Editors of the parent also write every doc in the subcollection (calendar's host inviting and removing attendees). Default false: a vote or ballot is only ever its owner's."
+                  },
+                  "selfRead": {
+                    "const": true,
+                    "description": "Each doc is readable only by the uid it is keyed by (while they read the parent) and platform admins: other readers of the parent, the parent app's `:admin` tier included, read none of it, so a list of the subcollection is refused below platform admin and clients get their own doc by id. Use for ballots whose aggregate the server writes onto the parent. Tenant parents only. Emitted into selfReadSubcollections()."
+                  },
+                  "threadReaders": {
+                    "type": "boolean",
+                    "description": "Governed subcollections only: anyone who may comment on the parent (its tenant readers, its steward groups under stewardRead, platform admins and developers under adminComments) writes their own doc, as for the comment thread's likes. Default false: only the parent's own tenant readers (a ticket's group members) do."
+                  }
+                }
+              },
+              "auditTrail": {
+                "const": true,
+                "description": "Every create, update and delete of a doc in this subcollection is appended to `audit_events` (functions/audit_trail.js, from functions/_audit_collections.json's `subcollections`), and every client write must stamp `lastModifiedBy`/`lastModifiedAt` as for an audited collection. Emitted into subcollectionPolicies()."
+              },
+              "blockDelete": {
+                "const": true,
+                "description": "No client deletes a doc in this subcollection (pair with softDelete where users remove things). Emitted into subcollectionPolicies()."
+              },
+              "authorField": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_]+$",
+                "description": "Each doc belongs to the uid in this field (a comment's authorId). Any reader of the parent (the tenant grant, EX-STEWARD-1, EX-ADMIN-1's adminComments) may create a doc naming themselves; only the author may update it, and only the authorMayUpdate fields; editing the parent grants nothing over it. Needs authorMayUpdate. Emitted into subcollectionPolicies()."
+              },
+              "authorMayUpdate": {
+                "$ref": "#/$defs/fieldList",
+                "description": "The fields the author may change on their own doc (with authorField). The audit stamp fields are always allowed."
+              },
+              "authorEmailField": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_]+$",
+                "description": "With authorField: a new doc's copy of its author's email (shown next to it) must equal the caller's token email (request.auth.token.email), and no update changes it. Emitted into subcollectionPolicies()."
+              },
+              "softDeleteClears": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_]+$",
+                "description": "With softDelete: the field (a comment's text) a soft delete must leave empty (''), so the deleted content stays only in the audit trail. Emitted into subcollectionPolicies()."
+              },
+              "boundedList": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["field", "max"],
+                "description": "A list field its writers set (a likes doc's commentIds) stays a list of at most `max` items. Emitted into subcollectionPolicies().",
+                "properties": {
+                  "field": { "type": "string", "pattern": "^[A-Za-z0-9_]+$" },
+                  "max": { "type": "integer" }
+                }
+              },
+              "selfArrayFields": {
+                "$ref": "#/$defs/fieldList",
+                "maxItems": 2,
+                "description": "List fields of uids that readers other than the author mark (a message's readBy). Needs authorField. Any reader of the parent may update a doc touching only these fields (and selfMapFields), each time appending their own uid to a duplicate-free list or removing its one copy, everything else unchanged and in order; a new doc's lists hold at most its author's uid once. At most two fields. Emitted into subcollectionPolicies()."
+              },
+              "selfMapFields": {
+                "$ref": "#/$defs/fieldList",
+                "maxItems": 2,
+                "description": "Map fields keyed by uid that readers other than the author write (a message's reactionsByUser: uid -> its emojis, space-separated). Needs authorField. Any reader of the parent may update a doc touching only these fields (and selfArrayFields), each time changing only the entry under their own uid, which must be null, removed, or a string of at most 64 characters; a new doc's maps hold at most its author's entry. At most two fields. Emitted into subcollectionPolicies()."
+              },
+              "createdAtField": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_]+$",
+                "description": "With authorField: the field holding a doc's creation time (a message's timestamp) must equal request.time on create (the client writes FieldValue.serverTimestamp()), and no update changes it, so nobody back- or forward-dates a doc. Emitted into subcollectionPolicies()."
+              },
+              "softDelete": {
+                "const": true,
+                "description": "Removing a doc sets `deletedAt` (the request time) and `deletedBy` (the caller) instead of deleting it: neither may be set on create (nor `moderationReason`, which only a moderation callable sets), both are set together, and a deleted doc takes no further client writes. Needs blockDelete; with authorField, authorMayUpdate must list both fields. Emitted into subcollectionPolicies()."
+              },
+              "collectionGroup": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Collection-group queries over this subcollection, when enforced: by readerField == uid, or by an entitlement to one of readApps in the doc's own groupId (the query must filter on groupId).",
+                "properties": {
+                  "readerField": {
+                    "type": "string"
+                  },
+                  "readApps": {
+                    "$ref": "#/$defs/fieldList"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "readerListField": {
+          "type": "string",
+          "description": "A server-maintained list of uids that may read the doc (groups.memberIds), provable with array-contains."
+        },
+        "clientReaderListField": {
+          "type": "string",
+          "description": "A server-maintained list of client uids (the client portal, functions/_client_links.js) that may read the doc while they hold <groupId>:<app>:guest in its group. Tenant kind, single-app collections; the field must also be a serverField."
+        },
+        "memberRead": {
+          "const": true,
+          "description": "Any active member of the doc's group reads it, whatever their app entitlements (groups, memberships, invitations)."
+        },
+        "guestShareable": {
+          "const": true,
+          "description": "An embeddable app may share this collection with its guests: a guest's `{g}:{app}:collection:<name>` scope (apps/{app}.externalCollections, computeEntitlements) reads it only where this is set, so a collection of other people's records (applications, uploads) can never be opened to every guest by app config. Members' collection scopes (Bordereau Report's fan-out) are unaffected. For app config a guest's form needs (rented_dwelling_config)."
+        },
+        "auditTrail": {
+          "const": true,
+          "description": "Every create, update and delete of a doc in this collection is appended to `audit_events` by a server trigger (functions/audit_trail.js; the list is generated into functions/_audit_collections.json): who, when, the doc, and the fields that changed with their before and after values. A client write that stamps `lastModifiedBy` must stamp the caller's uid, and `lastModifiedAt` the request time; ScopedCollection stamps both on every write. Required for the Regulated security tier. Kind server may declare it too: the trigger records its Admin SDK writes, which are attributed when they stamp lastModifiedBy/lastModifiedAt (auditStamp() in functions/_audit_trail.js)."
+        },
+        "auditGroupIdFromDocId": {
+          "const": true,
+          "description": "With auditTrail: the doc id is the group's id (groups, group_subscriptions), so audit_events entries take it as their groupId whatever the doc's own groupId field says."
+        },
+        "auditExempt": {
+          "type": "string",
+          "minLength": 20,
+          "description": "Why writes here need no audit trail of their own: the collection holds no record (a delivery, a derived index) or is itself an append-only record. A callable's auditedWrites may name it (scripts/security_tier_audit/audited_callables.js). Can't be combined with auditTrail."
+        },
+        "auditRedact": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "With auditTrail: top-level fields whose values audit_events never records (a dotted path, `details.secureUrl`, names a key inside a map field). A change to one is still recorded, with `{redacted: true}` for its before and after values, so history shows that it changed but no reader of the trail sees the secret (link tokens, token hashes, nonces). Server config only (functions/_audit_collections.json); generates nothing into the rules."
+        },
+        "search": {
+          "type": "object",
+          "required": ["fields"],
+          "additionalProperties": false,
+          "description": "Record search (plans/record-search/OVERVIEW.md §5): the audit trail's trigger keeps `searchPrefixes` on every doc, built from these fields by functions/_search_prefixes.js, so the launcher's search finds the record with `searchPrefixes array-contains <term>` as the signed-in person. Needs auditTrail (the trigger maintains the field) and `searchPrefixes` in serverFields (only the server writes it). Server config (functions/_audit_collections.json `search`) and the Dart table's `searchable`; generates nothing into the rules.",
+          "properties": {
+            "fields": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "description": "The fields whose words are indexed, most important first (the list is capped at 80 prefixes). A dotted path names a key inside a map field (`client.name`); a list field indexes each string in it."
+            },
+            "digitFields": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "description": "Phone number fields among `fields`: each number is also indexed as digits, with and without its leading codes."
+            },
+            "hiddenWhen": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "description": "Boolean fields that hide a record from search while true (an archived item). A soft-deleted doc (`deletedAt`) is always hidden."
+            }
+          }
+        },
+        "automation": {
+          "$ref": "#/$defs/automationBlock",
+          "description": "Opts the collection in to Automations (plans/automations/DESIGN.md): the record events it emits, the only fields an event envelope may carry (`fields`), their types for the rule editor (`fieldTypes`), the date fields a schedule may count from (`dateFields`) and, for a regulated app, the fields a webhook may send (`webhookFields`). Needs exactly one `apps` entry. Server config only (functions/_automation_sources.json, security/generate_automation.js); generates nothing into the rules."
+        },
+        "auditAppId": {
+          "type": "string",
+          "description": "With auditTrail: the app every audit_events entry of this collection is recorded under, whatever the doc's own appId says, so that app's :admin tier in the doc's group (group admins included) reads them (groups and group_subscriptions: group-admin; memberships: users). Without it, a collection with one `apps` entry records under that app (the rules' scope for it) and one with several under each doc's appId. Server config only (functions/_audit_collections.json); generates nothing into the rules."
+        },
+        "guestWritable": {
+          "const": true,
+          "description": "Admitted guests of an embeddable app (`{g}:{app}:guest`) may create, read and edit their own docs (creatorId/ownerIds) in this collection, and its subcollections through the parent. Without it the guest tier grants nothing here, so a guest's reach is exactly the collections that declare it (plus guestShareable reads), and every other collection of the app stays staff-only. Field locks such as staffOnly still apply to guests. For the record a guest submits (an application or an upload), never for staff-side records."
+        },
+        "stewardRead": {
+          "const": true,
+          "description": "EX-STEWARD-1: steward groups of the doc's relatedAppId read it and comment on it."
+        },
+        "commentThread": {
+          "const": true,
+          "description": "The docs carry the shared comment thread (packages/shared_ui comment_thread_widget.dart): security/generate.js adds the `comments` and `comment_likes` subcollections from its COMMENT_THREAD definition (author-owned comments with soft delete and no hard delete, one self-keyed likes doc per reader, both on the audit trail), so every collection that uses the widget gets the same policy."
+        },
+        "adminComments": {
+          "const": true,
+          "description": "EX-ADMIN-1: platform admins and developers read any group's doc and add comments (authorId == caller) to its `comments` subcollection, for the cross-group triage screens (Dev Pipeline, Improve Apps' All groups). Comments only: the doc itself stays tenant-written."
+        },
+        "developerRead": {
+          "const": true,
+          "description": "EX-DEV-1: platform developers read it."
+        },
+        "developerWritable": {
+          "const": true,
+          "description": "EX-DEV-1: platform developers write it from the client (never serverFields)."
+        },
+        "adminOnlyCollection": {
+          "const": true,
+          "description": "Only the `:admin` tier of the scope reads or writes it (replaces per-doc __admin_only, which fails open in list queries)."
+        },
+        "requiredClearance": {
+          "type": "integer",
+          "description": "Minimum access-index clearance_level (replaces per-doc __required_clearance)."
+        },
+        "ownerScoped": {
+          "const": true,
+          "description": "Below the `:admin` tier, members read and write only docs they own (creatorId/ownerIds); list queries must filter on creatorId == uid or ownerIds array-contains uid (ScopedCollection.queryOwned). Replaces per-doc __admin_only privacy (Language Learner)."
+        },
+        "writeTier": {
+          "enum": [
+            "base",
+            "edit"
+          ],
+          "description": "base (default): base-tier members create and edit their own docs. edit: writes need `:edit` or `:admin` (ce_events: only CE managers author events)."
+        },
+        "idPattern": {
+          "type": "string",
+          "description": "Extra regex a new doc's id may match (beyond auto ids, UUIDs, the groupId and `<groupId>__...`), for legacy natural keys. `<groupId>` stands for the doc's groupId and `<uid>` for the caller, so an id can embed both (usage_daily's `{date}_{groupId}_{uid}`)."
+        },
+        "memberWrite": {
+          "const": true,
+          "description": "Any non-guest active member of the doc's group may create and update their OWN doc (creatorId, and the readerField if declared, equal the caller; the collection's field locks still apply) without holding the collection's app entitlement. Never deletes; reads stay entitlement-scoped. For per-user records every client writes whatever app is open (usage_daily). Needs singleOwner."
+        },
+        "naturalKeyIds": {
+          "const": true,
+          "description": "Doc ids are natural keys (a uid, a slug, a composite of them) stored as {groupId}__{key} through ScopedCollection.docForKey (plans/firestore-rules 4.6). Read by security/generate_dart.js into the shim's policy table. Table data only: the rules' tenantIdOk() already accepts {groupId}__{key} ids for every tenant collection."
+        },
+        "publishTo": {
+          "type": "string",
+          "pattern": "^public_[A-Za-z0-9_]+$",
+          "description": "Tenant kind: the public-kind collection (public_<this collection>) its docs are published to through the publicPublish callable (D2, plan 2.7). Table data only: read by security/generate_public.js (the server's config) and security/generate_dart.js (PublicCollection)."
+        },
+        "source": {
+          "type": "string",
+          "description": "Kind public: the tenant collection whose docs this one holds projections of. The public collection must be named public_<source>, and the source must declare publishTo back."
+        },
+        "projection": {
+          "$ref": "#/$defs/fieldList",
+          "description": "Kind public: the only source fields copied into a published doc (besides sourceGroupId, sourceAppId, sourceCollection, sourceId, publishedBy, publishedAt and projectionVersion). Changing it changes projectionVersion; the M11 script re-projects docs whose version is stale."
+        },
+        "publishTier": {
+          "enum": [
+            "owner",
+            "edit",
+            "admin"
+          ],
+          "description": "Kind public: who may publish and unpublish a source doc, in the source doc's group: owner = its creator (creatorId/ownerIds) holding any tier of the app, including :guest, or anyone with :edit/:admin; edit (default) = :edit or :admin; admin = :admin. ACTIVE platform admins always may."
+        },
+        "requiredFields": {
+          "$ref": "#/$defs/fieldList",
+          "description": "Kind public: source fields that must be present and non-empty to publish."
+        },
+        "publishWhen": {
+          "type": "object",
+          "additionalProperties": {
+            "description": "The value the source field must equal (string, number or boolean)."
+          },
+          "description": "Kind public: field -> value the source doc must hold to be published. The re-sync trigger unpublishes a doc as soon as it stops matching (a listing set back to draft)."
+        },
+        "fileFields": {
+          "$ref": "#/$defs/fieldList",
+          "description": "Kind public: projection fields holding Storage objects of the source's group and app (a path or a download URL, or a list of them). Each object is copied to published/{sourceGroupId}/{appId}/{collection}/{id}/ and the field rewritten to the copy (a path stays a path, a URL becomes the copy's URL)."
+        },
+        "maxBytes": {
+          "type": "integer",
+          "description": "Kind public: the largest projection (JSON-encoded) publicPublish accepts. Default 65536."
+        }
+      }
+    }
+  }
+}

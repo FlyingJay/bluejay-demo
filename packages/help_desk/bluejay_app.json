@@ -1,0 +1,17 @@
+{
+  "appId": "help-desk",
+  "name": "Help Desk",
+  "description": "Support tickets: your customers and members ask your group for help, and your group asks Bluejay",
+  "icon": "support_agent",
+  "iconBgColor": "#0F766E",
+  "iconColor": "#FFFFFF",
+  "categories": ["Business"],
+  "creatorEmail": "jay@bluejay.gg",
+  "sharedEditing": false,
+  "isEmbeddable": true,
+  "clientPortal": true,
+  "embeddableAccessModes": ["public"],
+  "securityTier": "regulated",
+  "visibility": "public",
+  "installInGroups": ["bluejay", "developer", "games"]
+}

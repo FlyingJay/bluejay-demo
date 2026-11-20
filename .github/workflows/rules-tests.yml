@@ -1,0 +1,242 @@
+# Emulator tests for firestore.rules and storage.rules (plans/firestore-rules
+# T2): the generated persona x fixture x operation matrix from
+# security/collections.json, the expression-headroom check on the heaviest
+# requests, the Storage matrix and the phase-1 spikes. See
+# security/rules-tests/README.md. Nothing is deployed and no Google
+# credentials are used: the emulator runs a `demo-` project.
+#
+# PRs and deploy-rules.yml's pre-deploy run use one representative per
+# policy class plus a core slice of every other table entry; the nightly run
+# (RULES_MATRIX_FULL=1) runs the full matrix for every entry. There is no
+# push trigger: deploy-rules.yml (which the deploy train calls) already runs
+# this suite before every deploy of a change to the rules or security/, and
+# the PR run covers the other paths.
+#
+# The nightly run skips when main has no commit since the last successful
+# nightly that touches these paths (scripts/ci/suite_inputs.js, suite
+# `rules`, which workflow_triggers.test.js keeps equal to the pull_request
+# paths), except on Sundays (UTC), when it always runs. Callers through
+# workflow_call must grant `actions: read` for the `changes` job.
+#
+# Draft PRs skip the suite; it runs once the PR is marked ready
+# (ready_for_review) and on later pushes. Locally, scripts/ci/local_check.sh
+# --rules runs it.
+#
+# The suite runs as parallel `suite` jobs, each with its own emulator: the
+# matrix in shards (one job per shard), the expression-headroom test, and
+# every other test file. The `rules-tests` job passes when all of them
+# passed; it's the one check to look at, and deploy-rules.yml's `needs`
+# waits for every job of this workflow.
+#
+# The suite holds no secrets and runs on the runner the HEAVY_RUNNER
+# repository variable names, or ubuntu-latest when it's unset.
+name: Rules tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - firestore.rules
+      - storage.rules
+      - firebase.json
+      - 'security/**'
+      - 'packages/shared_services/lib/generated/**'
+      - functions/_shared.js
+      - functions/access_control.js
+      - functions/_guest_admission.js
+      - functions/_guest_identity.js
+      - functions/_corporate_access.js
+      - functions/_tenant_ids.js
+      - functions/_platform_access.js
+      - .github/workflows/rules-tests.yml
+  schedule:
+    - cron: '41 9 * * *' # nightly full matrix (09:41 UTC)
+  # deploy-rules.yml runs this suite on the SHA it deploys.
+  workflow_call:
+    inputs:
+      full:
+        description: Run the full matrix for every table entry
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run the full matrix for every table entry
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# github.workflow is the caller's name under workflow_call, so the deploy's
+# run and a standalone run of the same ref don't cancel each other. Only PR
+# runs cancel an older run: on main the suite gates Deploy rules, and with
+# the suite taking longer than the gap between merges, cancelling meant no
+# deploy ever finished. There a newer run waits for the running one instead
+# (GitHub keeps only the newest waiting run).
+concurrency:
+  group: rules-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '22.23.1'
+
+jobs:
+  # Nightly only: whether anything the suite reads changed since the last
+  # successful nightly. Any failure here runs the suite anyway.
+  changes:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for relevant commits since the last successful nightly
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/ci/suite_inputs.js nightly --workflow rules-tests.yml \
+            --suites rules --full-on-weekday 0 >> "$GITHUB_OUTPUT" || echo "run=true" >> "$GITHUB_OUTPUT"
+
+  # One job per part of the suite, each with its own emulator JVMs.
+  suite:
+    name: ${{ matrix.part == 'matrix' && format('matrix shard {0}', matrix.shard) || matrix.part }}
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && github.event.pull_request.draft != true }}
+    runs-on: ${{ vars.HEAVY_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # test/matrix.test.js, one shard per job (lib/matrix_suite.js). The
+        # list must be 1..RULES_MATRIX_SHARDS (workflow_triggers.test.js).
+        part: [matrix]
+        shard: [1, 2, 3, 4]
+        include:
+          - part: cost # test/cost.test.js (expression headroom)
+          - part: other # every other test file
+    env:
+      RULES_MATRIX_SHARDS: 4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            security/rules-tests/package-lock.json
+
+      - name: Cache the Firebase emulator jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators-${{ hashFiles('security/rules-tests/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-firebase-emulators-
+
+      # The personas' access indexes are built by functions/_shared.js.
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+
+      - name: Install rules-tests dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: security/rules-tests
+
+      - name: Generated rules are up to date
+        run: node security/generate.js --check
+
+      - name: Run the rules tests in the emulator
+        env:
+          PART: ${{ matrix.part }}
+          RULES_MATRIX_SHARD: ${{ matrix.shard }}
+          RULES_MATRIX_FULL: ${{ (github.event_name == 'schedule' || inputs.full) && '1' || '' }}
+          # GC log per emulator JVM (Firestore and the Storage rules runtime;
+          # %p keeps them apart) and a heap dump on OOM, in the repo root
+          # where emulators:exec runs.
+          JAVA_TOOL_OPTIONS: -Xlog:gc*:file=emulator-gc-%p.log:time,uptime:filecount=2,filesize=20m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=emulator-heap.hprof
+        # What `npm test` in security/rules-tests runs, for this part's files.
+        run: |
+          dir=security/rules-tests/test
+          case "$PART" in
+            matrix) tests="$dir/matrix.test.js" ;;
+            cost) tests="$dir/cost.test.js" ;;
+            other)
+              tests=""
+              for f in "$dir"/*.test.js; do
+                case "$f" in */matrix.test.js|*/cost.test.js) ;; *) tests="$tests $f" ;; esac
+              done ;;
+            *) echo "unknown part $PART"; exit 1 ;;
+          esac
+          echo "Test files: $tests"
+          security/rules-tests/node_modules/.bin/firebase emulators:exec --only firestore,storage \
+            --project demo-bluejay "node --test $tests"
+
+      # Total GC pause time and the heap after the last collections, per
+      # emulator JVM: a heap that keeps growing shows up here first.
+      - name: Emulator heap and GC time
+        if: always()
+        run: |
+          shopt -s nullglob
+          for f in emulator-gc-*.log; do
+            pauses=$(grep -E ' Pause .*->.*\([0-9]+M\) [0-9.]+ms$' "$f" || true)
+            total=$(printf '%s\n' "$pauses" | grep -oE '[0-9.]+ms$' | awk '{s += $1} END {printf "%.1f", s / 1000}')
+            echo "$f: $(printf '%s\n' "$pauses" | grep -c . || true) pauses, ${total}s paused in total; last:"
+            printf '%s\n' "$pauses" | tail -n 2
+          done
+
+      # The emulators log to files in the repo root, which the test output
+      # never shows. Heap dumps are too big to upload: only their size is printed.
+      - name: Show the emulator logs
+        if: failure()
+        run: |
+          shopt -s nullglob
+          for f in firestore-debug.log firebase-debug.log storage-debug.log ui-debug.log emulator-gc-*.log*; do
+            echo "::group::$f (last 200 lines)"
+            tail -n 200 "$f"
+            echo "::endgroup::"
+          done
+          dumps=(emulator-heap*.hprof)
+          if [ ${#dumps[@]} -gt 0 ]; then ls -lh "${dumps[@]}"; else echo "No emulator heap dump."; fi
+
+      - name: Upload the emulator logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rules-tests-emulator-logs-${{ matrix.part }}${{ matrix.shard }}
+          path: |
+            firestore-debug.log
+            firebase-debug.log
+            storage-debug.log
+            ui-debug.log
+            emulator-gc-*.log*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The suite's one result: passes only when every `suite` job passed.
+  rules-tests:
+    needs: [changes, suite]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every part of the suite passed
+        env:
+          RESULT: ${{ needs.suite.result }}
+        run: |
+          echo "suite jobs: $RESULT"
+          test "$RESULT" = success

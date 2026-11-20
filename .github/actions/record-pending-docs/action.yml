@@ -1,0 +1,134 @@
+name: Record pending doc changes
+description: >-
+  Records which documentation features the commits since `base` touched in
+  documentation/.pending_doc_changes.json, and prunes entries the nightly
+  docs PR has documented (documentation/.docs_batch_processed.json). Shared
+  by the deploy train's finish job (its docs_pending target) and
+  agentic-docs-on-main.yml (manual runs). The caller checks out the commit
+  with full history first.
+
+inputs:
+  base:
+    description: 'The commit the last recording covered; empty records the head commit only.'
+    required: false
+    default: ''
+  token:
+    description: 'A token that may commit to main (the BLUEJAY_PAT secret).'
+    required: true
+
+runs:
+  using: composite
+  steps:
+      - name: Check for processed keys to reconcile
+        id: processed
+        shell: bash
+        run: |
+          HAS_PROCESSED="$(node -e "
+            const fs = require('node:fs');
+            const p = 'documentation/.docs_batch_processed.json';
+            let n = 0;
+            try { n = (JSON.parse(fs.readFileSync(p, 'utf8')).processed || []).length; } catch (e) {}
+            process.stdout.write(n > 0 ? 'true' : 'false');
+          ")"
+          echo "has_processed=$HAS_PROCESSED" >> "$GITHUB_OUTPUT"
+
+      - name: Detect changed features via mapping
+        id: detect
+        shell: bash
+        env:
+          BASE_SHA: ${{ inputs.base }}
+        run: |
+          ENTRIES="$(node scripts/docs/record_pending_entries.js "$BASE_SHA" "$GITHUB_SHA")"
+          COUNT="$(ENTRIES="$ENTRIES" node -p 'JSON.parse(process.env.ENTRIES).length')"
+          echo "Pending entries for ${BASE_SHA:0:7}..${GITHUB_SHA:0:7}: $COUNT"
+          if [ "$COUNT" = "0" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "entries=[]" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "entries=$ENTRIES" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prune processed entries and append matched features to the pending-changes log
+        if: steps.detect.outputs.has_changes == 'true' || steps.processed.outputs.has_processed == 'true'
+        uses: actions/github-script@v7
+        env:
+          ENTRIES_JSON: ${{ steps.detect.outputs.entries }}
+          HEAD_SHA: ${{ github.sha }}
+        with:
+          github-token: ${{ inputs.token }}
+          script: |
+            const {
+              PENDING_PATH, PROCESSED_PATH, reconcilePendingState,
+            } = require(`${process.env.GITHUB_WORKSPACE}/scripts/docs/nightly_docs_batch.js`);
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const shortSha = process.env.HEAD_SHA.slice(0, 7);
+            const newEntries = JSON.parse(process.env.ENTRIES_JSON || '[]');
+
+            const read = async (path, fallback) => {
+              try {
+                const { data } = await github.rest.repos.getContent({ owner, repo, path, ref: 'main' });
+                return { sha: data.sha, state: JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')) };
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                return { sha: undefined, state: fallback };
+              }
+            };
+            const write = (path, sha, state, message) => github.rest.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              path,
+              message,
+              content: Buffer.from(`${JSON.stringify(state, null, 2)}\n`).toString('base64'),
+              sha,
+            });
+
+            // A merge can land on main between the read and the write. Retry
+            // on optimistic-concurrency conflicts (409) by re-reading both
+            // files each attempt; reconcile is idempotent. Pending is always written
+            // before processed is trimmed, so a key is never forgotten while
+            // its entry is still pending.
+            const maxAttempts = 8;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const pendingFile = await read(PENDING_PATH, { version: 1, pending: [] });
+              const processedFile = await read(PROCESSED_PATH, { version: 1, processed: [] });
+              const pendingState = pendingFile.state;
+              const processedState = processedFile.state;
+
+              const r = reconcilePendingState({
+                pending: Array.isArray(pendingState.pending) ? pendingState.pending : [],
+                processedKeys: Array.isArray(processedState.processed) ? processedState.processed : [],
+                newEntries,
+              });
+
+              if (!r.pendingChanged && !r.processedChanged) {
+                core.info('Pending log already up to date.');
+                return;
+              }
+
+              try {
+                if (r.pendingChanged) {
+                  const parts = [];
+                  if (r.addedCount) parts.push(`record pending changes up to ${shortSha}`);
+                  if (r.prunedCount) parts.push(`clear ${r.prunedCount} documented entr${r.prunedCount === 1 ? 'y' : 'ies'}`);
+                  await write(PENDING_PATH, pendingFile.sha, { ...pendingState, pending: r.pending }, `docs: ${parts.join('; ')}`);
+                  core.info(`Pending log: +${r.addedCount} recorded, -${r.prunedCount} documented.`);
+                }
+                if (r.processedChanged) {
+                  await write(PROCESSED_PATH, processedFile.sha, { version: 1, processed: r.processedKeys },
+                    `docs: trim ${PROCESSED_PATH.split('/').pop()} (${r.processedKeys.length} still pending)`);
+                  core.info(`Processed state trimmed to ${r.processedKeys.length} key(s).`);
+                }
+                return;
+              } catch (error) {
+                if (error.status === 409 && attempt < maxAttempts) {
+                  core.info(`Conflict updating the docs state files (attempt ${attempt}/${maxAttempts}), retrying...`);
+                  await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 2000));
+                  continue;
+                }
+                throw error;
+              }
+            }
+
+            throw new Error(`Failed to reconcile pending doc changes for ${shortSha} after ${maxAttempts} attempts.`);

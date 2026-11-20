@@ -1,0 +1,48 @@
+name: improve_bluejay
+description: A combined app for reporting issues and requesting features.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  app_maker:
+    path: ../app_maker
+
+  blue_ji:
+    path: ../blue_ji
+
+  bluejay_design:
+    path: ../bluejay_design
+
+  bug_reports:
+    path: ../bug_reports
+
+  feature_voting:
+    path: ../feature_voting
+
+  help_desk:
+    path: ../help_desk
+
+  dev_queue:
+    path: ../dev_queue
+  shared_ui:
+    path: ../shared_ui
+  shared_services:
+    path: ../shared_services
+  wiki:
+    path: ../wiki
+
+  cloud_firestore: ^6.0.3
+  firebase_auth: ^6.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # 4.5+ requires cloud_firestore 7.
+  fake_cloud_firestore: ">=4.4.0 <4.5.0"

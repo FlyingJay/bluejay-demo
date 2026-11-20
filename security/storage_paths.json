@@ -1,0 +1,144 @@
+{
+  "comment": "Storage path families: the single source of truth for storage.rules (plans/firestore-rules §3.2, §4.11, T16). Every object path belongs to exactly one family. `read`/`write` say what the family grants: `signedIn` and `none` are generic (the generated blocks in storage.rules apply them, no rule edit needed), `block` means the family's own match blocks (`matchBlocks`) decide. security/generate_storage.js renders the generated section of storage.rules from this file; security/check_rules_exceptions.js approves exactly the `matchBlocks` listed here. `migrate` marks the legacy prefixes M8 (scripts/firestore_admin/migrations/2026-11-05_migrate_storage_legacy.js) moves, and where to: `<prefix>/<rest>` becomes groups/{g}/apps/{appId}/{folder}/<rest>, the folder the app's ScopedStorage writes today, so a migrated file sits exactly where a new upload would.",
+  "families": {
+    "group_apps": {
+      "paths": ["groups/{groupId}/apps/{appId}/**"],
+      "read": "block",
+      "write": "block",
+      "matchBlocks": ["/groups/{groupId}/apps/{appId}/{allPaths=**}", "/groups/{groupId}/apps/{appId}/{folder}/{rest=**}"],
+      "guestWritableFolders": {
+        "chat": ["images"],
+        "course-of-construction": ["property_images"],
+        "naic-sight": ["naic_sight"],
+        "rented-dwelling": ["property_images"],
+        "storage": ["client_uploads"]
+      },
+      "guestUploadLimits": {
+        "chat": { "maxBytes": 10485760, "contentTypes": "image/(png|jpe?g|gif|webp|heic|heif)" },
+        "storage": { "maxBytes": 26214400, "contentTypes": "(image/.*|application/pdf|text/(plain|csv)|application/(msword|vnd[.]ms-excel|vnd[.]openxmlformats-officedocument[.].*))" }
+      },
+      "retainedFolders": {
+        "app-maker": ["app_request_media"],
+        "expenses": ["receipts"],
+        "improve-apps":["bug_reports_media", "feature_request_media"],
+        "signatures": ["signature_documents"]
+      },
+      "what": "Group-scoped app files (ScopedStorage). The tenant rule: the caller's access index must list the path's group (ACTIVE, not denied), and an entitlement for the path's app narrows it. Members read; base tier creates and edits/deletes its own files; :edit/:admin edit any; guests (:guest) create, read and edit only their own, and only in the app's guestWritableFolders, within its guestUploadLimits (size and content type) where it has them. Metadata groupId/appId must equal the path; creatorId is the uploader and can't be forged. Files in an app's retainedFolders are kept for the record: once uploaded, no client deletes, overwrites or changes one (only the Admin SDK removes it). Platform admins (ACTIVE) read (EX-ADMIN-1). No public branch (D2).",
+      "why": "The generic tenant rule (plan 2.4, 4.11); the Storage counterpart of firestore.rules' inTenant() && detail(). retainedFolders is the Storage side of blockDelete, for the attachments regulated records point at.",
+      "reviewed": "2026-11-09"
+    },
+    "group_logo": {
+      "paths": ["groups/{groupId}/logo.jpg"],
+      "read": "signedIn",
+      "write": "none",
+      "what": "Group logos set before versioning (new ones go to group_logo_versions). Signed-in read; no client write: the groupAdminSetLogo callable (functions/_group_logo.js, used by Group Admin and the Groups app) checks the caller (the group's admins, {g}:groups:admin, ACTIVE platform admins and developers; a frozen group only platform admins) and normalizes the image.",
+      "why": "Platform branding outside the app hierarchy, shown in group pickers and invitations. One server write path keeps every logo change on the audit trail and every stored logo a re-encoded image.",
+      "reviewed": "2026-11-09"
+    },
+    "group_logo_versions": {
+      "paths": ["groups/{groupId}/logos/**"],
+      "read": "signedIn",
+      "write": "none",
+      "writeOnce": true,
+      "what": "Every group logo ever set: groups/{groupId}/logos/{version}/ holds logo.jpg, logo_thumb.png and logo_print.png, written by groupAdminSetLogo (functions/_group_logo.js) to a new version folder each time, with a Storage precondition that refuses to overwrite. The group doc's logoUrl, logoThumbnailUrl and logoPrintUrl name the current version; earlier versions stay. Signed-in read, no client write.",
+      "why": "Regulated groups keep every logo they have shown: a change adds a version and the groups doc's audit trail records which one was current, so nothing is overwritten or lost.",
+      "reviewed": "2026-11-12"
+    },
+    "group_logo_renditions": {
+      "paths": ["groups/{groupId}/logo_thumb.png", "groups/{groupId}/logo_print.png"],
+      "read": "signedIn",
+      "write": "none",
+      "what": "Thumbnails and print copies of the logos set before versioning (by groupAdminSetLogo, or generateGroupLogoThumbnail in functions/app_icons.js). Signed-in read, no client write.",
+      "why": "Server-generated platform assets (plan 3.2).",
+      "reviewed": "2026-11-05"
+    },
+    "published": {
+      "paths": ["published/**"],
+      "read": "signedIn",
+      "write": "none",
+      "what": "The public namespace (D2): published/{sourceGroupId}/{appId}/{collection}/{sourceId}/{file}, copies of the files of published docs (listing photos, public Storage app files). Signed-in read; no client write: functions/public_namespace.js (publicPublish/publicUnpublish and the re-sync trigger) is the only writer, through the Admin SDK.",
+      "why": "Cross-group public files leave the tenant paths entirely (plan 2.7): no rule under groups/ grants another group anything.",
+      "reviewed": "2026-11-05"
+    },
+    "app_icons": {
+      "paths": ["app_icons/**"],
+      "read": "signedIn",
+      "write": "block",
+      "matchBlocks": ["/app_icons/{allPaths=**}"],
+      "what": "Platform app icons (App Manager). Signed-in read; ACTIVE platform admins and developers write.",
+      "why": "The global app catalog's icons, no tenant (plan 3.2: admin/developer).",
+      "reviewed": "2026-11-05"
+    },
+    "app_icons_thumbs": {
+      "paths": ["app_icons_thumbs/**"],
+      "read": "signedIn",
+      "write": "none",
+      "what": "App icon thumbnails written by functions/app_icons.js. Signed-in read, no client write.",
+      "why": "Server-generated platform assets (plan 3.2).",
+      "reviewed": "2026-11-05"
+    },
+    "app_screenshots": {
+      "paths": ["app_screenshots/**"],
+      "read": "signedIn",
+      "write": "none",
+      "what": "App store screenshots, app_screenshots/{appId}/{scene}_{formFactor}_{theme}.png, captured from the Sunnyside demo group by scripts/app_screenshots/ and listed in apps/{appId}.screenshots. Signed-in read; no client write: scripts/app_screenshots/publish.js (Admin SDK) is the only writer.",
+      "why": "Platform catalog assets with no tenant, like app icons (plans/add-apps/OVERVIEW.md 5.5).",
+      "reviewed": "2026-11-09"
+    },
+    "profile_pictures": {
+      "paths": ["profile_pictures/**"],
+      "read": "block",
+      "write": "block",
+      "matchBlocks": ["/profile_pictures/{uid}/{file}", "/profile_pictures/{file}"],
+      "exception": "EX-PROFILE-PIC-1",
+      "what": "Profile pictures, keyed per uid: profile_pictures/{uid}/{file} is written only by that uid and read by the owner, users who share a group with them, and ACTIVE platform admins. Legacy flat profile_pictures/{file} objects are read-only (signed in).",
+      "why": "A user's picture is personal, not any one group's, so it can't be the tenant rule; co-member read needs the subject's access index (a second firestore.get). The app shows pictures through the token URL stored in users/{uid}.profilePictureUrl, so reads through the rules are rare.",
+      "reviewed": "2026-11-05"
+    },
+    "chat_images": {
+      "paths": ["chat_images/**"],
+      "read": "signedIn",
+      "write": "none",
+      "what": "Legacy chat images (before groups/{g}/apps/chat/images). Signed-in read, no writes; archive later.",
+      "why": "Kept read-only for old messages (plan 3.2); 2 objects.",
+      "reviewed": "2026-11-05"
+    },
+    "server_only": {
+      "paths": ["warehouse_private/**", "blue_ji_docs_corpus/**"],
+      "read": "none",
+      "write": "none",
+      "what": "Server-only data: the data warehouse's private files and Blue Ji's docs corpus. No client access.",
+      "why": "Written and read only through the Admin SDK (plan 3.2).",
+      "reviewed": "2026-11-05"
+    },
+    "legacy_users": { "paths": ["users/**"], "read": "none", "write": "none", "migrate": { "appId": "storage", "folder": "files" }, "what": "Legacy Storage app private files (users/{uid}/…).", "why": "Pre-ScopedStorage data; M8 moves it into groups/{g}/apps/storage/files/{uid}/… and rewrites files.downloadUrl.", "reviewed": "2026-11-05" },
+    "legacy_shared_files": { "paths": ["shared_files/**"], "read": "none", "write": "none", "migrate": { "appId": "storage", "folder": "files" }, "what": "Legacy Storage app shared files.", "why": "Pre-ScopedStorage data; M8 migrates it.", "reviewed": "2026-11-05" },
+    "legacy_public": { "paths": ["public/**"], "read": "none", "write": "none", "migrate": { "appId": "storage", "folder": "files" }, "what": "Legacy Storage app public files.", "why": "Pre-ScopedStorage data; M8 migrates it (public copies go to published/ through T27, not back here).", "reviewed": "2026-11-05" },
+    "legacy_gallery_photos": { "paths": ["gallery_photos/**"], "read": "none", "write": "none", "migrate": { "appId": "art-gallery", "folder": "gallery_photos" }, "what": "Legacy Art Gallery photos.", "why": "Pre-ScopedStorage data; M8 migrates it. gallery_screen.dart deletes through refFromURL, which fails once enforced until migrated.", "reviewed": "2026-11-05" },
+    "legacy_wood_shop": { "paths": ["wood_shop/**"], "read": "none", "write": "none", "migrate": { "appId": "shop", "folder": "wood_shop" }, "what": "Legacy Wood Shop product photos.", "why": "Pre-ScopedStorage data; M8 migrates it.", "reviewed": "2026-11-05" },
+    "legacy_photo_albums": { "paths": ["photo_albums/**"], "read": "none", "write": "none", "migrate": { "appId": "photo-albums", "folder": "album_photos" }, "what": "Legacy Photo Albums photos (photo_albums/{albumId}/…).", "why": "Pre-ScopedStorage data; M8 migrates it.", "reviewed": "2026-11-05" },
+    "legacy_bug_reports_media": { "paths": ["bug_reports_media/**"], "read": "none", "write": "none", "migrate": { "appId": "improve-apps", "folder": "bug_reports_media" }, "what": "Legacy Improve Apps bug report attachments.", "why": "Pre-ScopedStorage data; M8 migrates it.", "reviewed": "2026-11-05" },
+    "legacy_feature_request_media": { "paths": ["feature_request_media/**"], "read": "none", "write": "none", "migrate": { "appId": "improve-apps", "folder": "feature_request_media" }, "what": "Legacy Improve Apps feature request attachments.", "why": "Pre-ScopedStorage data; M8 migrates it.", "reviewed": "2026-11-05" },
+    "legacy_recipe_photos": { "paths": ["recipe_photos/**"], "read": "none", "write": "none", "migrate": { "appId": "cookbook", "folder": "recipe_photos" }, "what": "Legacy Cookbook recipe photos.", "why": "Pre-ScopedStorage data; M8 migrates it.", "reviewed": "2026-11-05" },
+    "legacy_qr_codes": { "paths": ["qr_codes/**"], "read": "none", "write": "none", "migrate": { "appId": "qr-codes", "folder": "qr_codes" }, "what": "Legacy QR code images.", "why": "Pre-ScopedStorage data; M8 migrates it.", "reviewed": "2026-11-05" },
+    "legacy_property_images": { "paths": ["property_images/**"], "read": "none", "write": "none", "migrate": { "appId": "rented-dwelling", "folder": "property_images" }, "what": "Legacy Rented Dwelling property images.", "why": "Pre-ScopedStorage data; M8 migrates it.", "reviewed": "2026-11-05" },
+    "legacy_naic_sight": { "paths": ["naic_sight/**"], "read": "none", "write": "none", "migrate": { "appId": "naic-sight", "folder": "naic_sight" }, "what": "Legacy NAIC Sight job files (naic_sight/{uid}/{jobId}/…).", "why": "Pre-ScopedStorage data; M8 migrates it.", "reviewed": "2026-11-05" },
+    "removed_apps": {
+      "paths": ["recorder_audio/**", "video_editor_temp/**", "video_editor_merged/**"],
+      "read": "none",
+      "write": "none",
+      "what": "Data of apps removed from the repo (Recorder, Video Editor). No client access; archive, then delete.",
+      "why": "No client reads or writes these any more (plan 3.2).",
+      "reviewed": "2026-11-05"
+    },
+    "unmatched": {
+      "paths": [],
+      "default": true,
+      "read": "none",
+      "write": "none",
+      "what": "Every path no other family claims (including other paths under groups/{g}/). Denied.",
+      "why": "Default deny: a new prefix needs a family here before clients can use it.",
+      "reviewed": "2026-11-05"
+    }
+  }
+}

@@ -1,0 +1,1544 @@
+{
+  "$schema": "./collections.schema.json",
+  "collections": {
+    "apps": {
+      "comment": "Global app catalog (platform kind): any signed-in user reads; platform admins and developers write the descriptive fields. The permission fields computeEntitlements reads (plus clientPortal, embeddableAccessModes and the install gate's securityTier and visibility) are serverFields: only the appsUpdatePermissions callable (functions/app_creator.js) writes them.",
+      "kind": "platform",
+      "adminWritable": true,
+      "serverFields": ["allowedGroups", "stewardGroupIds", "isEmbeddable", "clientPortal", "embeddableAccessModes", "externalCollections",
+                       "sharedEditing", "securityTier", "visibility"],
+      "developerWritable": true
+    },
+    "app_categories": { "kind": "platform", "adminWritable": true, "developerWritable": true },
+    "ce_events": {
+      "apps": ["continuing-education"],
+      "subcollections": {
+        "registrations": {
+          "selfKeyed": {"fields": ["userId", "registeredAt"], "selfCreate": true, "selfDelete": true, "editorsWrite": true},
+          "collectionGroup": {"readerField": "userId"}
+        }
+      },
+      "writeTier": "edit"
+    },
+    "platform_config": {
+      "kind": "platform",
+      "adminWritable": true,
+      "subcollections": {
+        "history": {
+          "comment": "platform_config/usage_pricing/history: the pricing change log usagePricingSet appends to (functions/usage_meter.js); served through usagePricingGet.",
+          "serverWritten": true
+        }
+      },
+      "developerWritable": true
+    },
+    "users": {
+      "comment": "users/{uid}: personal (doc id is the uid). roles/status/clearance_level feed rebuildUserAccessIndex, so they are serverFields (role_manager.js writes them); contactVerification is too (claimInvitation records the contact a claim link proved), and legalAcceptance (the Terms and Privacy versions the account last accepted, written with a legal_acceptances entry by functions/_legal_terms.js). isDemo too: it marks a demo account (functions/_demo.js), whose off-platform notifications are skipped, so only the Admin SDK (scripts/demo/setup.js) sets it. Admins and developers read profiles (EX-ADMIN-1, EX-DEV-1). Its metadata subcollection holds the access index every rule reads: only rebuildUserAccessIndex and the user triggers (functions/_shared.js, access_control.js, guest_users.js) write it; the owner reads it.",
+      "kind": "personal",
+      "subcollections": {
+        "metadata": {"serverWritten": true, "auditExempt": "Derived: the access index is recomputed from memberships, groups and the user platform access whenever they change, so it holds nothing of its own."},
+        "prefs": {"comment": "users/{uid}/prefs/{appId}: an app's per-user preferences (e.g. workout_tracker's weight unit). Owner-written under the parent's personal rule, like the users doc itself."}
+      },
+      "developerRead": true,
+      "blockDelete": true,
+      "serverFields": ["roles", "status", "clearance_level", "isBanned", "stripeCustomerId", "contactVerification", "isDemo", "legalAcceptance"]
+    },
+    "naic_sight_jobs": {
+      "comment": "The client creates and deletes a job and never updates it (blockUpdate), so userId, status and the pipeline fields can't be rewritten to re-fire completion; the batches under it are the processing pipeline's own records (functions/naic_sight.js). Who is billed and emailed (the job's creatorId) comes from the server (resolveTrustedEmail in functions/_guest_identity.js), recorded in the serverFields; the job's client-written guestEmail/guestName/isRegisteredUser/userEmail are ignored.",
+      "apps": ["naic-sight"],
+      "guestWritable": true,
+      "blockUpdate": true,
+      "serverFields": ["requester", "resultEmailedTo", "resultEmailedAt", "platformBillingEventId", "accessBillingEventId", "usageBillingEventId"],
+      "subcollections": {"batches": {"serverWritten": true}}
+    },
+    "script_runs": { "kind": "platform_admin", "adminWritable": true, "blockDelete": true },
+    "executive_advisors": {
+      "comment": "Executive Team: the advisor fleet's configuration (title, emoji, colour, cadence, enabled, instructions), one doc per advisor. Platform admins edit it in the Executive Team app; advisor rounds read it with the Admin SDK (scripts/firestore_admin/advisors.js).",
+      "kind": "platform_admin",
+      "adminWritable": true
+    },
+    "dev_time_months": {
+      "comment": "Dev Time: one doc per month (YYYY-MM) of estimated development time from the git history and merged PRs: totals, each day's hours split between the owner and developer agents, and hours by app or feature (scripts/sred/publish_stats.js, the same calculation as the monthly SR&ED records). Written only by that script with the Admin SDK; platform admins read it in the Dev Time app. Holds no rates, amounts or PR text.",
+      "kind": "platform_admin"
+    },
+    "code_summary_snapshots": {
+      "comment": "Code Summary: weekly measurements of the repository (lines by language, purpose, app and app category; counts of apps, packages, Cloud Functions, collections, tests, docs and the org's repositories). One doc per measured date (YYYY-MM-DD), plus `latest` and a compact `history` series. Written only by scripts/code_summary/publish.js with the Admin SDK from .github/workflows/code-summary.yml; platform admins read it in the Code Summary app. Holds no source text.",
+      "kind": "platform_admin"
+    },
+    "executive_team_settings": {
+      "comment": "Executive Team: the advisor round schedule (doc rounds: rounds per day, unanswered rounds before new ones wait). Platform admins edit it in the Executive Team app; the round scripts read it with the Admin SDK (scripts/firestore_admin/advisors.js).",
+      "kind": "platform_admin",
+      "adminWritable": true
+    },
+    "executive_rounds": {
+      "comment": "Executive Team: one doc per advisor round (questions asked, answers recorded, links), written only by the Admin SDK (the round scripts, and devChangesOnWrite as the PRs a round lists change state). Platform admins read it in the Executive Team app.",
+      "kind": "server"
+    },
+    "collection_catalog": { "kind": "platform_admin", "developerRead": true },
+    "collection_policies": { "kind": "platform_admin", "developerRead": true },
+    "commercial_property_config": {
+      "comment": "Per-group app settings whose only writer is a validating, group-admin-gated callable (e.g. rating variables, geography rules). Not kind server: members still read them through the tenant rule to render forms.",
+      "apps": ["commercial-property"],
+      "serverWritten": true,
+      "auditTrail": true
+    },
+    "rented_dwelling_config": { "apps": ["rented-dwelling"], "serverWritten": true, "guestShareable": true, "auditTrail": true,
+      "comment": "The group's flow mode and geography rules, read by the application form, guests' included (externalCollections)."},
+    "insurance_coc_config": { "apps": ["course-of-construction"], "serverWritten": true, "guestShareable": true, "auditTrail": true,
+      "comment": "The group's flow mode and geography rules, read by the application form, guests' included (externalCollections)."},
+    "app_group_settings": {
+      "comment": "Per-group app settings (functions/app_group_settings.json), written only by appGroupSettingsUpdate, which checks the group's app :admin tier and validates every value. Members read them through the tenant rule.",
+      "serverWritten": true
+    },
+    "notification_audit_log": {
+      "comment": "Server-only — Admin SDK is the only writer, ever.",
+      "kind": "server",
+      "auditExempt": "Delivery log: each entry records one email or notification the server sent about a change that is recorded where it happened, and nothing edits it afterwards."
+    },
+    "notification_coalesce_windows": {
+      "comment": "Which notification currently \"owns\" a thread's coalescing window (functions/_notification_coalescing.js). Client-writable, this would let anyone suppress someone else's push notifications by pointing a window at a notification they control.",
+      "kind": "server"
+    },
+    "action_items": {
+      "comment": "The To do feed (functions/_action_items.js): one doc per thing waiting for someone to act on it (a client to approve, an install request, an expense to review), keyed by its source. Only the Admin SDK writes it: apps open an item when something starts waiting and resolve it when it is dealt with. The people who can act are listed in assigneeUids and read it; nothing is client-writable.",
+      "kind": "server",
+      "readerListField": "assigneeUids",
+      "auditExempt": "A pointer, not a record: each item mirrors a pending state recorded on its source document, where the decision is audited."
+    },
+    "help_tickets": {
+      "comment": "Help Desk tickets (functions/_help_desk.js, plans/help-desk/DESIGN.md). A ticket crosses groups: it is filed in one group (groupId) and answered at a desk that may be another group's or the Bluejay staff desk (deskKey). So every read and write goes through the helpDesk* callables, which decide each caller's side from their access index; no client reads or writes it.",
+      "apps": ["help-desk"],
+      "kind": "server",
+      "auditTrail": true,
+      "search": { "fields": ["subject", "requesterName"] },
+      "automation": {
+        "label": "Tickets",
+        "events": ["record.created", "record.updated"],
+        "fields": ["subject", "status", "priority", "category", "requesterKind", "requesterName", "requesterUid", "assigneeUid",
+          "waitingOn", "createdAt", "lastActivityAt", "firstResponseAt", "resolvedAt"],
+        "fieldTypes": { "subject": "string", "status": "string", "priority": "string", "category": "string",
+          "requesterKind": "string", "requesterName": "string", "requesterUid": "uid", "assigneeUid": "uid", "waitingOn": "string" },
+        "dateFields": ["createdAt", "lastActivityAt", "firstResponseAt", "resolvedAt"]
+      },
+      "subcollections": {
+        "help_messages": {
+          "comment": "The ticket's conversation, append-only: each message records its side, author and time, and is never edited.",
+          "serverWritten": true
+        }
+      }
+    },
+    "help_desk_settings": {
+      "comment": "Each Help Desk's settings (doc id: the group id, or _platform for the Bluejay desk): routing, guest and public intake, categories, saved replies. Read and written only through helpDeskGetSettings/helpDeskSaveSettings, which allow the desk's agents and keep routing to platform admins.",
+      "apps": ["help-desk"],
+      "kind": "server",
+      "auditTrail": true
+    },
+    "help_desk_links": {
+      "comment": "Help Desk's signed-out requester links (functions/_tokens.js): hashed tokens that each open one ticket. Client-writable, anyone could mint a link into someone else's ticket; all access goes through the Cloud Functions.",
+      "kind": "server"
+    },
+    "help_desk_rate_limits": { "kind": "server" },
+    "notifications": {
+      "comment": "Each user's notification inbox. Created only by the Admin SDK: the notificationsSend callable (functions/_notification_send.js: sender holds the app in the group, recipients belong to it, rate-limited) and server triggers. The recipient reads their own, may flip isRead and may delete their own; nothing else is client-writable.",
+      "kind": "server",
+      "readerField": "recipientId",
+      "readerMayUpdate": ["isRead"],
+      "readerMayDelete": true,
+      "auditExempt": "Delivery, not a record: a notification tells someone about a change that is recorded where it happened, and its recipient may mark it read or delete it."
+    },
+    "automations": {
+      "comment": "Automations rules (functions/_automation_rules.js, plans/automations/DESIGN.md section 4): one doc per group rule, \"when X happens, do Y\", owned by the member who last saved or switched it on. Deleting is soft (deletedAt, deletedBy, enabled false), so the audit trail keeps who deleted it and every reader skips it. Read and written only through the automations* callables (functions/_automation_api.js), which allow the group's admins and the rule's app admins and check every part against the registries; the engine pauses a rule (enabled false, pausedReason) when its owner loses access or it hits its limits. No client reads or writes it.",
+      "kind": "server",
+      "auditTrail": true
+    },
+    "automation_overrides": {
+      "comment": "A group's changes to a built-in automation (doc id {groupId}__{builtInId}): switched off, or its adjustable fields changed. _platform__{builtInId} switches a built-in off for every group. Written by automationsSetBuiltIn (the group's admins and the app's admins) and by staff tools.",
+      "kind": "server",
+      "auditTrail": true
+    },
+    "automation_index": {
+      "comment": "Per group (doc id: the group id), the event types and schedule collections its enabled automations listen for, rebuilt by automationsOnRuleWritten. The emitters read it so a write nobody listens to creates no event.",
+      "kind": "server"
+    },
+    "platform_events": {
+      "comment": "The Automations event carrier (functions/_automation_transport.js): one doc per published event envelope, created by the emitters and the timer sweep and dispatched by automationsOnEvent. Expired by TTL on expireAt after 7 days.",
+      "kind": "server"
+    },
+    "automation_runs": {
+      "comment": "One doc per automation run (rule x event, id sha1(ruleId:eventId)): status, attempts, what each action did, and the error of a failed run. Doubles as the once-only claim and the dead-letter queue. Expired by TTL on expireAt after 90 days.",
+      "kind": "server"
+    },
+    "automation_timers": {
+      "comment": "Scheduled automation triggers (functions/_automation_timers.js): one doc per rule, record, day offset and date, fired by automationTimersDue. The id is the dedup key, so a fired timer is kept until expireAt (TTL).",
+      "kind": "server"
+    },
+    "automation_backfills": {
+      "comment": "Progress of planning timers for the records that existed before a schedule automation was switched on (doc id: the rule id), moved on a page per minute by automationTimersDue.",
+      "kind": "server"
+    },
+    "automation_retries": {
+      "comment": "Retry requests for failed automation runs (doc id: the run id): automationsRetry writes one as pending, stamped for the member who asked, and automationsOnRetryRequested re-runs the rule on the run's kept event and records the outcome (status done or failed). A request, so the guarded callable writes nothing else. No client reads or writes it.",
+      "kind": "server",
+      "auditTrail": true
+    },
+    "automation_sends": {
+      "comment": "email.send's once-only claims (functions/_automation_engine.js sendEmailOnce): one doc per run action and address, id sha1(idempotencyKey:address), created before the email goes out so a redelivered run never sends twice. Holds no address. Expired by TTL on expireAt after 90 days.",
+      "kind": "server"
+    },
+    "automation_rate_limits": {
+      "comment": "Per rule and group sliding-window run counts for the automation limits (functions/_rate_limit.js).",
+      "kind": "server"
+    },
+    "automation_field_drift": {
+      "comment": "Per opted-in source (doc id: the source key with '/' as '__'), which declared automation fields recent writes still held: writes counted, and each field's last-seen time and write count (functions/_automation_drift.js). Each instance adds to it at most hourly per collection; automationsContractSweep files a ticket for a field no write has held for 30 days.",
+      "kind": "server"
+    },
+    "automation_contract_tickets": {
+      "comment": "One doc per broken Automations contract the daily automationsContractSweep found (doc id: sha1 of the contract key): the platform-owned Improve Apps request filed for it and the latest rules, overrides or fields affected, so each break is filed once while its ticket is open (functions/_automation_contract_sweep.js).",
+      "kind": "server"
+    },
+    "trigger_claims": {
+      "comment": "Once-only claims for side-effecting Firestore triggers (functions/_trigger_once.js claimOnce): one doc per (function, document, write time), created with the Admin SDK and expired by TTL on expireAt. No client reads or writes it.",
+      "kind": "server"
+    },
+    "notification_send_rate_limits": {
+      "comment": "notificationsSend's per-sender sliding-window rate limit (functions/_notification_send.js).",
+      "kind": "server"
+    },
+    "calendar_private_events": {
+      "comment": "Calendar: the events of personal and shared calendars (calendarId), the same document shape as calendar_events. Only their calendar's members read and edit them (ownerScoped): ownerIds is adminOnly and always equals the calendar's ownerIds (the client copies it at create; onCalendarPrivateEventWritten corrects it, and onCalendarCalendarWritten re-copies it when the calendar is shared or unshared). Invitations stay a group-calendar feature, so there is no attendees subcollection; exceptions (one occurrence of a recurring event) work as on calendar_events. Sell bookings write here when a page books into a private calendar.",
+      "apps": ["calendar"],
+      "ownerScoped": true,
+      "adminOnly": ["ownerIds", "materializedThrough", "createdAt"]
+    },
+    "calendar_reminder_instances": { "kind": "server", "readerField": "recipientId" },
+    "event_planner_rsvp_tokens": { "kind": "server" },
+    "event_planner_rate_limits": { "kind": "server" },
+    "vendor_market_claim_invites": { "kind": "server" },
+    "claude_jobs": {
+      "comment": "The agent dispatch queue: written by the Cloud Functions in _agentic_ticket_dispatch.js and by the dispatch workers' own Admin SDK credentials, never by a client. Admin-only read (no readerField) — a job embeds whichever ticket/task text it came from, including other groups'.",
+      "kind": "server"
+    },
+    "feature_suggestions": {
+      "comment": "Usage-based feature suggestions (functions/_feature_suggestions.js): one doc per user holding the offer the launcher shows them and what they answered before. Written only by the nightly job and the featureSuggestionRespond callable; the user reads their own.",
+      "kind": "server",
+      "readerField": "uid"
+    },
+    "data_deletion_requests": {
+      "comment": "Requests to Bluejay to delete data (functions/_data_governance.js): scope 'group' (a group's admin asks for the group's data, from Group Admin's Data & privacy section) or 'account' (a person asks for their own account). Written only by the dataGovernance* callables and the trigger that files each as a Help Desk ticket for Bluejay staff; one open request per scope and target. The requester reads their own; the group's history goes to its Group Admin :admin tier through the audit trail.",
+      "kind": "server",
+      "readerField": "requesterUid",
+      "auditTrail": true,
+      "auditAppId": "group-admin"
+    },
+    "data_exports": {
+      "comment": "One doc per export from Group Admin's Data & privacy section (functions/_data_governance.js): who exported which of the group's collections, and when. Written only by dataGovernanceStartExport, which every export page call must name, so no export goes unrecorded; on the audit trail, and listed to the group's admins through dataGovernanceOverview.",
+      "kind": "server",
+      "auditTrail": true,
+      "auditAppId": "group-admin"
+    },
+    "feature_pitches": {
+      "comment": "Plain-language pitches for each app's documented improvements, written by the feature-suggestions nightly job (functions/_feature_suggestions.js) and cached by the docs' hash. Server-only; users see a pitch through their own feature_suggestions offer.",
+      "kind": "server"
+    },
+    "dev_queue_items": {
+      "comment": "Each user's development queue (functions/_dev_queue.js): one doc per request, written only by the queue's Cloud Functions and the dispatch workers' Admin SDK credentials. The owner reads their own items; admins read all.",
+      "kind": "server",
+      "readerField": "ownerId"
+    },
+    "dev_queue_pools": {
+      "comment": "Slot holders per development queue pool, the platform-wide counters, and a pool's manual extraSlots (set by functions/_queue_management.js). Holder keys name other members' items, so admin-only read.",
+      "kind": "server"
+    },
+    "dev_queue_capacity_snapshots": {
+      "comment": "Hourly samples of every development queue pool's slots, slots in use and waiting items, one doc per America/Toronto day, written by functions/_queue_management.js. Admin-only read: the samples name groups and users.",
+      "kind": "server"
+    },
+    "dev_queue_owners": {
+      "comment": "Per-user development queue state (the post-ship and idle nudge throttles), written by functions/_dev_queue_notify.js. Admin-only read.",
+      "kind": "server"
+    },
+    "review_desk_assignments": {
+      "comment": "Review Desk (functions/_review_desk.js): who on the developer team reviews each change request, in queue order. Written and read only through the reviewDesk* callables, which check the caller is in the developer group.",
+      "kind": "server"
+    },
+    "review_desk_members": {
+      "comment": "Review Desk alert settings per developer-group member (prioritized and new-request alerts), set through reviewDeskSetAlerts and read by the new-request and prioritized alerts.",
+      "kind": "server"
+    },
+    "dev_queue_workers": {
+      "comment": "Dispatch worker pool: each worker's last check-in and claim, machine, capabilities, owner and disabled flag, written by functions/_dev_queue_worker_core.js (directly, or through devWorkerApi). Admin-only read; Dev Workers lists it through devWorkerPool.",
+      "kind": "server"
+    },
+    "dev_worker_tokens": {
+      "comment": "Worker tokens (SHA-256 hashes only) that let a developer's computer join the dispatch worker pool through devWorkerApi (functions/_dev_worker_api.js). Server-only.",
+      "kind": "server"
+    },
+    "dev_changes": {
+      "comment": "PR lifecycle records (functions/_dev_changes.js), written only by .github/workflows/dev-change-lifecycle.yml's Admin SDK credentials. Admin-only read: they carry linked tickets' titles across groups.",
+      "kind": "server"
+    },
+    "deployments": {
+      "comment": "Production deploy runs and the release notes written when a change goes live; served to clients only through dev_pipeline.js / whats_new.js, which scope them per caller.",
+      "kind": "server"
+    },
+    "releases": { "kind": "server" },
+    "app_catalog_stats": {
+      "comment": "Add Apps install counts (functions/_app_catalog.js): installs.counts per app, demo groups excluded, and one ledger doc per counted group under installs/groups. Written by appCatalogOnGroupWritten; served to clients only through appCatalogList/appCatalogGet, which show counts for public apps alone.",
+      "kind": "server",
+      "subcollections": { "groups": { "serverWritten": true } }
+    },
+    "app_demand": {
+      "comment": "How much groups want each app, without who asked (functions/_app_demand.js): open Add Apps install requests, their upvotes, the groups asking, and open tier-upgrade requests by target tier, demo groups excluded. Recomputed per app by appDemandOnRequestWritten/appDemandOnTicketWritten; read through callables by platform admins and stewards.",
+      "kind": "server"
+    },
+    "app_install_requests": {
+      "comment": "Add Apps install requests (plans/add-apps/PHASE_3_DESIGN.md): {groupId}__{appId}, one per group and app, with each member's upvote in votes/{uid}. Read and written only by the Add Apps callables (appInstallRequest*, appCatalogList/Get) and appCatalogOnGroupWritten, which marks a request installed; every write is audit-stamped for its caller, and nothing is ever deleted. The vote tallies are recounted with functions/_vote_tally.js.",
+      "kind": "server",
+      "auditTrail": true,
+      "auditAppId": "add-apps",
+      "subcollections": {
+        "votes": {
+          "comment": "One upvote per member, keyed by uid (value 1, or 0 once withdrawn); written only by appInstallRequestCreate/Vote, never deleted.",
+          "auditTrail": true
+        }
+      }
+    },
+    "vendor_market_rate_limits": { "kind": "server" },
+    "commercial_property_broker_links": {
+      "comment": "Commercial Property broker answer links (functions/_commercial_property_broker_answers.js): hashed link tokens and their scope. Client-writable, anyone could mint a link into someone else's application; all access goes through the Cloud Functions. Admin-only read.",
+      "kind": "server"
+    },
+    "commercial_property_rate_limits": { "kind": "server" },
+    "guest_identities": {
+      "comment": "Corporate guests' emails, recorded only once the guest proves they control the address (functions/_guest_email_proof.js) and its domain is on the app's allowlist (functions/_guest_identity.js). Unlike the owner-writable copy on users/{uid}, these are what authorization may trust; each guest can read only their own. App Access owns corporate admission, so every attestation is on the audit trail, readable by the target app's :admin tier in the group.",
+      "kind": "server",
+      "readerField": "uid",
+      "apps": ["app-access"],
+      "auditTrail": true
+    },
+    "guest_email_codes": {
+      "comment": "One-time codes emailed to prove an address, by a corporate guest or someone signing up (functions/_guest_email_proof.js, _self_serve_signup.js): the sha256 is the doc id, so no reader can use one. Firestore TTL deletes them at expireAt. Credentials, so not on the audit trail; the guest_identities record they unlock is.",
+      "kind": "server"
+    },
+    "guest_email_send_limits": {
+      "comment": "Code-email counts per IP, per uid, per address and per group+app or signup (functions/_guest_email_proof.js, _rate_limit.js); doc ids are hashes, so no address is stored. Firestore TTL deletes them at expireAt.",
+      "kind": "server"
+    },
+    "warehouse_rate_limits": { "kind": "server" },
+    "ai_rate_limits": {
+      "comment": "Per-user AI gateway windows (functions/ai_gateway.js).",
+      "kind": "server"
+    },
+    "iclarify_rate_limits": {
+      "comment": "Per-user iClarify lookup windows and the short-lived, address-keyed result cache (functions/insure_me.js). The cache holds property data for any group's lookups, so admin-only read.",
+      "kind": "server"
+    },
+    "iclarify_lookup_cache": { "kind": "server" },
+    "rules_deployments": {
+      "comment": "One doc per deployed SHA: the ruleset names released before the deploy (the rollback target), after it, and the prod smoke result. Written only by .github/workflows/deploy-rules.yml through security/tools/rules_deploy.js (Admin SDK).",
+      "kind": "server"
+    },
+    "rules_denials": {
+      "comment": "Production permission-denied reports (functions/rules_denials.js, rulesDenialReport): which collection shape, operation and app a client was refused, never ids or values. Admin SDK only; read by security/tools/denials.js. Firestore TTL on expireAt (14 days).",
+      "kind": "server"
+    },
+    "rules_denial_rate_limits": {
+      "comment": "rulesDenialReport's per-uid (or hashed-IP) sliding-window rate limit (functions/rules_denials.js).",
+      "kind": "server"
+    },
+    "mailbox_accounts": {
+      "comment": "Per-user mailbox password version and address (functions/_mailbox_provisioning.js). Mailbox passwords are derived server-side; no client reads or writes this.",
+      "kind": "server"
+    },
+    "mailbox_owners": {
+      "comment": "Which uid owns each Poste mailbox address, keyed by the address (functions/_mailbox_provisioning.js claimMailboxAddress). A uid may only set the password of a mailbox it owns, so changing one's sign-in email never reaches another account's mailbox. No client reads or writes this.",
+      "kind": "server"
+    },
+    "proxy_rate_limits": {
+      "comment": "Per-user windows for paid HTTP proxies (functions/_http_auth.js).",
+      "kind": "server"
+    },
+    "warehouse_locks": {
+      "comment": "Which upload is loading into or rolling back a group's warehouse.",
+      "kind": "server"
+    },
+    "usage_rollups": {
+      "comment": "Usage Meter aggregates computed by Cloud Functions; admin-read only.",
+      "kind": "server"
+    },
+    "usage_reconciliation": { "kind": "server" },
+    "usage_storage": {
+      "comment": "Current bytes/files per (group, user, app), kept by the bucket triggers and the nightly recount (usage_storage.js).",
+      "kind": "server"
+    },
+    "usage_storage_objects": {
+      "comment": "Per-object ledger behind usage_storage: which owner each object's bytes are counted under (usage_storage.js).",
+      "kind": "server"
+    },
+    "exchange_rate_cache": {
+      "comment": "Exchange-rate tables shared by every caller of exchangeGetRates (functions/exchange_rates.js), one doc per base currency. Served only through that callable, which checks the app entitlement.",
+      "kind": "server"
+    },
+    "access_index_rebuilds": {
+      "comment": "Summary of the nightly full access-index rebuild (functions/_access_index_rebuild.js): counts, durations and uids, one `latest` doc. Admin SDK only.",
+      "kind": "server"
+    },
+    "ops_alerts": {
+      "comment": "Operations alert state (functions/_ops_alerts.js): one doc per problem id (a failed deploy, a failing scheduled workflow, the site down, a stopped scheduled job, a missing secret), open from its first alert until it recovers, so each problem alerts once. Admin SDK only.",
+      "kind": "server",
+      "auditExempt": "Operations state, not a record: it tracks whether a problem has alerted the platform operators yet, and the event it reports is recorded where it happened."
+    },
+    "platform_config_health": {
+      "comment": "Last result of the hourly server-config health check (functions/platform_config.js): secret ids and statuses, never values, in `latest`; and the internal monthly uptime rollups (functions/_uptime.js), one `uptime_<YYYY-MM>` doc per month. Admins read both through the platformConfigHealth callable.",
+      "kind": "server"
+    },
+    "stripe_webhook_events": {
+      "comment": "Stripe webhook dedupe ledger (functions/_stripe_webhook.js): one doc per processed event id, so a Stripe retry is a no-op. If it were client-writable, anyone could pre-mark a real event \"processed\" and make the platform ignore it. TTL on `expireAt`.",
+      "kind": "server"
+    },
+    "payment_orders": {
+      "comment": "Payments core (functions/_payments.js). The order ledger is what proves something was paid, so only Cloud Functions write it. No client reads it directly (it carries platform fees and the audit trail): payers get their own orders through paymentsGetOrder / paymentsConfirmOrder, a group's payment managers through paymentsListGroupOrders. On the audit trail under Merchant Portal, so each group's payment managers read its orders' history.",
+      "kind": "server",
+      "auditTrail": true,
+      "auditAppId": "merchant-portal"
+    },
+    "group_payment_accounts": {
+      "comment": "Each group's connected Stripe account (functions/_payment_accounts.js). Client-writable, anyone could point a group's checkout at their own account. Served to members by merchantGetPaymentAccount. On the audit trail under Merchant Portal (keyed by group), so each group's admins read who connected and disconnected its account.",
+      "kind": "server",
+      "auditTrail": true,
+      "auditAppId": "merchant-portal",
+      "auditGroupIdFromDocId": true
+    },
+    "payment_connect_states": {
+      "comment": "Hashed, single-use Stripe Connect OAuth state nonces: who started connecting which group, and how it ended. On the audit trail under Merchant Portal.",
+      "kind": "server",
+      "auditTrail": true,
+      "auditAppId": "merchant-portal",
+      "auditRedact": ["confirmTokenHash"]
+    },
+    "payment_fee_rules": {
+      "comment": "Fee rules (functions/_payment_fees.js), set by paymentsSetFeeRules.",
+      "kind": "server"
+    },
+    "payment_rate_limits": { "kind": "server" },
+    "payments_maintenance": {
+      "comment": "Progress of the payments core's self-running maintenance (backfills).",
+      "kind": "server"
+    },
+    "account_credits": {
+      "comment": "Prepaid balances per user (plans/purchasable-groups/DESIGN.md): balances.groups is how many groups the user may still register for free. Written only by functions/_account_credits.js (grants, spending a credit) in the same transaction as a ledger entry; the user reads their own, platform admins read all.",
+      "kind": "server",
+      "readerField": "userId",
+      "auditTrail": true,
+      "subcollections": {
+        "ledger": {
+          "comment": "account_credits/{uid}/ledger: one entry per balance change, written in the balance's transaction (functions/_account_credits.js). Read like the parent.",
+          "auditExempt": "Append-only ledger: each entry is itself the record of one balance change (actor, delta, reason), written with the audited balance and never edited.",
+          "serverWritten": true
+        }
+      }
+    },
+    "group_subscriptions": {
+      "comment": "One per user-registered group (functions/_group_purchases.js): whether it was paid with a credit or is billed monthly, and the last billed period. Server-written; the registering owner reads theirs, platform admins read all. Group Admin reads it through groupAdminGet. On the audit trail under Group Admin, so the group's admins read its history.",
+      "kind": "server",
+      "readerField": "ownerId",
+      "auditTrail": true,
+      "auditAppId": "group-admin",
+      "auditGroupIdFromDocId": true
+    },
+    "group_add_ons": {
+      "comment": "Add-on seats and development queues a group's admins buy in Group Admin (functions/_group_seats.js groupSeatsSetAddOns): counts, the prices accepted, payer, status and the last billed period. The counts are mirrored to the group's seats.addOnSeats and devQueue.addOnSlots. Server-written; the paying admin reads theirs, platform admins read all. Group Admin reads it through groupSeatsStatus. On the audit trail under Group Admin.",
+      "kind": "server",
+      "readerField": "payerId",
+      "auditTrail": true,
+      "auditAppId": "group-admin",
+      "auditGroupIdFromDocId": true
+    },
+    "group_seat_plans": {
+      "comment": "The paid or comped seat plan a group is on (functions/_group_seats.js, plans/group-seats/DESIGN.md): plan, payer, price, status and the last billed period. Server-written; the paying admin reads theirs, platform admins read all. Group Admin and the Users app read it through groupSeatsStatus, Seat Management through its callables. On the audit trail under Group Admin, so the group's admins read its history.",
+      "kind": "server",
+      "readerField": "payerId",
+      "auditTrail": true,
+      "auditAppId": "group-admin",
+      "auditGroupIdFromDocId": true
+    },
+    "storage_billing": {
+      "comment": "A group's Storage plan (functions/_storage_billing.js): free tier or pay as you go, the paying admin, the price and free tier they accepted, the plan history and the last billed period. Server-written; the payer reads theirs, platform admins read all. The Storage app reads it through storageBillingStatus. On the audit trail under Storage, so the group's admins read its history.",
+      "kind": "server",
+      "readerField": "payerId",
+      "auditTrail": true,
+      "auditAppId": "storage",
+      "auditGroupIdFromDocId": true
+    },
+    "signups": {
+      "comment": "Self-serve signup records (functions/_self_serve_signup.js, plans/self-serve-signup/DESIGN.md): one per account and per group signed up, with the package, use case and attribution chosen. Written once by the signup callables (a group's in its registration transaction); the person it names reads theirs, platform admins read all. On the audit trail under Group Admin.",
+      "kind": "server",
+      "readerField": "userId",
+      "auditTrail": true,
+      "auditAppId": "group-admin"
+    },
+    "legal_acceptances": {
+      "comment": "Each time an account accepts the Terms of Service and Privacy Policy (functions/_legal_terms.js): the versions, when, where (signup, invitation, client portal, the sign-in prompt), a hash of the IP and the user agent. Written only by the account-creating callables and legalAcceptTerms, together with users.legalAcceptance; the account reads its own, platform admins read all. On the audit trail under Group Admin, like signups.",
+      "kind": "server",
+      "readerField": "userId",
+      "auditTrail": true,
+      "auditAppId": "group-admin"
+    },
+    "signup_rate_limits": {
+      "comment": "The public signup callables' per-IP and overall rate-limit counters (functions/_self_serve_signup.js, _rate_limit.js; hashed keys).",
+      "kind": "server"
+    },
+    "invoices": {
+      "comment": "Bluejay's own billing (functions/_platform_invoicing.js). Invoices say what a user owes and whether it's paid: only Cloud Functions write them (the monthly cycle, platform admins' callables, and the payments core's platform.invoice fulfill). Each billed user reads their own; platform admins read all.",
+      "kind": "server",
+      "readerField": "userId"
+    },
+    "billing_events": {
+      "comment": "Billing events are the charges invoices are built from: written only by server code (usage, platform admins' callables), never by the user they bill (NAIC Sight's used to be owner-editable). Reads keep the tenant rule: the group's Billing app, and the billed user (ownerIds) with it.",
+      "apps": ["billing"],
+      "serverWritten": true,
+      "auditTrail": true
+    },
+    "billing_disputes": {
+      "comment": "A disputed billing event's thread (billing_disputes/{eventId}, messages subcollection): created and resolved by _platform_invoicing.js, updated (read flags, last message) and messaged from the payments DisputeChatScreen. Owned by the Billing app (like billing_events); the disputing user also reads their own (readerField). Older docs carry no appId, so the scope comes from the table.",
+      "apps": ["billing"],
+      "readerField": "userId"
+    },
+    "user_payment_methods": {
+      "comment": "Each user's saved cards (display data only), never group-scoped. Created only by paymentsAttachPaymentMethod (functions/_payment_methods.js) from Stripe's own card details; the monthly invoice run charges the isDefault one. The owner reads theirs, flips isDefault and deletes.",
+      "kind": "server",
+      "readerField": "userId",
+      "readerMayUpdate": ["isDefault"],
+      "readerMayDelete": true
+    },
+    "error_logs": {
+      "comment": "Leftover client error reports from the removed Error Logs app (73a654c7); nothing reads or writes them. Admin-only read.",
+      "kind": "server"
+    },
+    "billing_runs": {
+      "comment": "The monthly billing run's checkpoint per period (functions/_platform_invoicing.js).",
+      "kind": "server"
+    },
+    "audit_events": {
+      "comment": "The audit trail: one event per create, update and delete of a doc in an auditTrail collection, appended by functions/audit_trail.js with the actor, time, doc and changed fields. Never edited or deleted. Read by holders of the audited app's :admin tier in the event's group (group admins included) and by platform admins.",
+      "serverWritten": true,
+      "adminOnlyCollection": true
+    },
+    "insurance_applications": {
+      "comment": "Insurance policies. Paid state (in force, policy/certificate number, dates, the premium paid) is written by the payments core's insurance kinds (Cloud Functions) or by Policy Editor staff — never by the applicant, who owns the document. Only staff may move a policy into force; the applicant can still save drafts, request a quote and cancel. The field locks apply to the apps that take payment through the core (Commercial Property applicants still record their own quotes). `immutable`: the scope the locks key on can't be switched away and back.",
+      "apps": ["commercial-property", "course-of-construction", "rented-dwelling"],
+      "auditTrail": true,
+      "blockDelete": true,
+      "guestWritable": true,
+      "staffApps": ["policy-editor"],
+      "staffOnlyAppIds": ["rented-dwelling", "course-of-construction"],
+      "staffOnly": ["policyNumber", "activatedAt", "effectiveDate", "expiryDate", "totalPremiumCents", "pricingResult",
+                    "paymentOrderId", "paidAt", "insurer", "certificateNumber", "certificateSequence",
+                    "masterCertificateNumber", "boundAt", "boundBy", "renewedFromPolicyId",
+                    "renewedToPolicyId", "boundConfirmationEmailedAt", "policyDocumentsEmailedAt",
+                    "certificateEmailedAt", "unverifiedActivationAt", "issuedCoverage",
+                    "coverageChangedAfterOrder", "appOrGroupChangedAt", "appOrGroupChange"],
+      "staffOnlyValues": {"field": "status", "values": ["active", "renewed", "lapsed", "expired"]},
+      "subcollections": {
+        "transactions": {
+          "comment": "Bordereau rows; Bordereau Report reads them with a collection-group query on groupId. Server-written: the payments core, the lapse job and insuranceRecordTransaction (functions/_insurance_ledger.js), which takes the row's tenant, premium and dates from the policy and its author from auth.",
+          "serverWritten": true,
+          "collectionGroup": {"readApps": ["bordereau-report", "policy-editor"]}
+        }
+      }
+    },
+    "sent_emails": {
+      "comment": "Archived copies of emails sent about a record (functions/_sent_email_archive.js, opt-in per sendEmail call): recipients, subject, time and a download link to the raw .eml. An audit trail, so only Cloud Functions write it. Read by the sending app's members and by its staff app, like the records it is about.",
+      "apps": ["commercial-property", "course-of-construction", "rented-dwelling"],
+      "staffApps": ["policy-editor"],
+      "serverWritten": true,
+      "auditTrail": true
+    },
+    "insurance_coc_certificate_sequences": {
+      "comment": "Course of Construction certificate counters, advanced only by the payments core's course_of_construction.certificate kind.",
+      "kind": "server"
+    },
+    "insurance_policy_renewals": {
+      "comment": "Staff's record that a renewal is genuine (insuranceRecordPolicyRenewal): what makes a payment-core renewal count as backed, so no client writes it.",
+      "kind": "server"
+    },
+    "insurance_underwriting_approvals": {
+      "comment": "Underwriter approvals of referred risks for online payment (insuranceApproveForOnlinePayment): the approved price and terms the checkout sells, so no client writes them.",
+      "kind": "server"
+    },
+    "insurance_application_origins": {
+      "comment": "What each application was created as (product + group), recorded by insuranceOnApplicationCreated: payment backing and delivery go by this, never by the document's own appId/groupId.",
+      "kind": "server"
+    },
+    "insurance_maintenance": { "kind": "server" },
+    "insurance_renewal_reminder_logs": {
+      "comment": "Reminder and email ledgers (functions/insurance.js, rented_dwelling.js, insurance_coc.js, continuing_education.js, email_sender.js): one doc per reminder/email already sent or per sender's rate window. Client-writable, anyone could pre-create an entry and suppress someone else's reminder or policy-document email, or reset a rate limit. No client reads them.",
+      "kind": "server"
+    },
+    "ce_reminder_logs": { "kind": "server" },
+    "rented_dwelling_email_idempotency": { "kind": "server" },
+    "rented_dwelling_email_rate_limits": { "kind": "server" },
+    "insurance_coc_email_idempotency": { "kind": "server" },
+    "insurance_coc_email_rate_limits": { "kind": "server" },
+    "system_email_rate_limits": { "kind": "server" },
+    "insurance_apply_email_idempotency": {
+      "comment": "Retired names of the rented_dwelling_* ledgers above: docs remain in production, no code reads or writes them.",
+      "kind": "server"
+    },
+    "insurance_apply_email_rate_limits": { "kind": "server" },
+    "system_email_log": {
+      "comment": "Platform audit and report records, written only by Cloud Functions (email_sender.js, access_control.js, system_reports.js). Admin-only read: the System Logs screen (Groups admin shell) reads system_audit_logs as a platform admin; nothing else reads them from a client.",
+      "kind": "server"
+    },
+    "system_audit_logs": { "kind": "server" },
+    "security_reports": { "kind": "server" },
+    "system_report_runs": { "kind": "server" },
+    "app_access_segments": {
+      "comment": "Privilege source: computeEntitlements grants segment-gated apps from these docs, and onAppAccessSegmentWritten rebuilds members' access indexes. Written only by the appAccess*Segment callables, which also serve every client read (appAccessListSegments). On the audit trail; deleting one sets deletedAt instead (isDeletedSegment in functions/_app_access_segments.js).",
+      "kind": "server",
+      "apps": ["app-access"],
+      "auditTrail": true
+    },
+    "email_sender_settings": {
+      "comment": "Per-group settings written only by validating callables (updateGroupEmailSenderConfig, corporateAccessUpdateConfig, the storage usage triggers); members still read them through the tenant rule (EmailSenderSettingsService, CorporateAccessService, the Storage app's usage banner). email_sender_settings is the From-address allowlist; corporate_access_configs decides guest/corporate access.",
+      "apps": ["email-sender"],
+      "serverWritten": true
+    },
+    "corporate_access_configs": { "apps": ["app-access"], "serverWritten": true, "adminOnlyCollection": true, "memberRead": true, "auditTrail": true },
+    "client_invoicing_documents": {
+      "comment": "The client-safe copy of a invoicing_documents record its portal clients read (functions/_client_links.js projection): only the fields a client may see, plus clientUids. Only functions/client_links.js writes it; the record itself stays staff-only.",
+      "apps": ["invoices"], "serverWritten": true, "auditTrail": true, "clientReaderListField": "clientUids"
+    },
+    "client_shop_sales_submissions": {
+      "comment": "The client-safe copy of a shop_sales_submissions record its portal clients read (functions/_client_links.js projection): only the fields a client may see, plus clientUids. Only functions/client_links.js writes it; the record itself stays staff-only.",
+      "apps": ["shop"], "serverWritten": true, "auditTrail": true, "clientReaderListField": "clientUids"
+    },
+    "client_form_assignments": {
+      "comment": "The client-safe copy of a form_assignments record its portal clients read (functions/_client_links.js projection): only the fields a client may see, plus clientUids. Only functions/client_links.js writes it; the record itself stays staff-only.",
+      "apps": ["forms"], "serverWritten": true, "auditTrail": true, "clientReaderListField": "clientUids"
+    },
+    "client_signature_recipients": {
+      "comment": "The client-safe copy of a signature_recipients record its portal clients read (functions/_client_links.js projection): only the fields a client may see, plus clientUids. Only functions/client_links.js writes it; the record itself stays staff-only.",
+      "apps": ["signatures"], "serverWritten": true, "auditTrail": true, "clientReaderListField": "clientUids"
+    },
+    "client_files": {
+      "comment": "The client-safe copy of a files record its portal clients read (functions/_client_links.js projection): only the fields a client may see, plus clientUids. Only functions/client_links.js writes it; the record itself stays staff-only.",
+      "apps": ["storage"], "serverWritten": true, "auditTrail": true, "clientReaderListField": "clientUids"
+    },
+    "portal_configs": {
+      "comment": "portal_configs/{groupDocId}: the group's client portal (plans/business-suite/CLIENT_PORTAL_PLAN.md): on/off, what clients are called, the welcome text, how people become clients and which apps they get. Written only by portalUpdateConfig (functions/client_portal.js); members read it (the launcher, App Access). Clients and signed-out visitors get its public fields from portalGetInfo.",
+      "apps": ["app-access"], "serverWritten": true, "adminOnlyCollection": true, "memberRead": true, "auditTrail": true
+    },
+    "portal_removed_clients": {
+      "comment": "{groupId}__{uid}: a client staff removed from the group's portal. portalJoin, portalRegister and visitor claims refuse them; accepting a new invitation clears it. Server-only (functions/client_portal.js).",
+      "kind": "server", "apps": ["app-access"], "auditTrail": true
+    },
+    "portal_invitations": {
+      "comment": "A pending invitation to a group's client portal: the invited email, the contact it came from, and the sha256 of the emailed link token (the doc id). Server-only: portalInviteClient writes it, portalAcceptInvite redeems it, and staff list them through portalListClients.",
+      "kind": "server", "apps": ["app-access"], "auditTrail": true
+    },
+    "storage_usage": { "apps": ["storage"], "serverWritten": true },
+    "merchantAccounts": {
+      "comment": "Retired per-user Merchant Portal records, replaced by group_payment_accounts. Nothing reads or writes them any more; no client may create or rewrite one (they used to carry a client-set Stripe account id). No app owns it: Merchant Portal writes only through its audited callables (securityTierAudit.writesThroughCallables).",
+      "blockCreate": true,
+      "blockUpdate": true, "blockDelete": true
+    },
+    "vendor_market_threads": {
+      "comment": "Server-written, tenant-read: Cloud Functions are the only writer. Operator staff read through their marketplace-admin entitlement; the participants (client organizers and claimed vendors, usually in other groups) through ownerIds, which only the server maintains (readerListField; D1's ownership no longer grants, T27). For multi-party records every party must be able to trust — no participant may forge, rewrite, or delete them.",
+      "apps": ["marketplace-admin"],
+      "serverWritten": true,
+      "readerListField": "ownerIds"
+    },
+    "vendor_market_messages": { "apps": ["marketplace-admin"], "serverWritten": true, "readerListField": "ownerIds" },
+    "vendor_market_quotes": { "apps": ["marketplace-admin"], "serverWritten": true, "readerListField": "ownerIds" },
+    "vendor_market_timeline_shares": {
+      "comment": "The day-of schedule a client organization publishes to a booked vendor's conversation: the organizer edits their own copy in vendor_market_timeline, and vendorMarketShareTimeline writes the snapshot here, so a vendor can read the plan but never alter it. Its participants read it through the thread's ownerIds, copied by the server (readerListField).",
+      "apps": ["marketplace-admin"],
+      "serverWritten": true,
+      "readerListField": "ownerIds"
+    },
+    "warehouse_tables": {
+      "comment": "Structural config whose every write needs server-side validation (and, for tables, a matching external schema change).",
+      "apps": ["warehouse-tables"],
+      "serverWritten": true
+    },
+    "warehouse_settings": { "apps": ["warehouse-tables"], "serverWritten": true },
+    "warehouse_sources": { "apps": ["warehouse-sources"], "serverWritten": true },
+    "warehouse_source_settings": { "apps": ["warehouse-sources"], "serverWritten": true },
+    "warehouse_lookups": {
+      "comment": "Reference data every upload is mapped through; entries are keyed by a server-computed hash, and unmapped values are pipeline-written.",
+      "apps": ["warehouse-lookups"],
+      "serverWritten": true
+    },
+    "warehouse_lookup_entries": { "apps": ["warehouse-lookups"], "serverWritten": true },
+    "warehouse_unmapped_values": { "apps": ["warehouse-lookups"], "serverWritten": true },
+    "warehouse_mapping_profiles": {
+      "comment": "Normalization rules; versions are immutable once published.",
+      "apps": ["warehouse-mappings"],
+      "serverWritten": true
+    },
+    "warehouse_mapping_versions": { "apps": ["warehouse-mappings"], "serverWritten": true },
+    "warehouse_uploads": {
+      "comment": "Uploads and their audit trail: read by the warehouse team (Imports app) and by the uploader, a member or a guest of Warehouse Uploader who holds no Imports entitlement, through the creatorId the pipeline stamps (readerField; WarehouseUploaderService queries creatorId == uid); written only by the pipeline.",
+      "apps": ["warehouse-imports"],
+      "readerField": "creatorId",
+      "serverWritten": true
+    },
+    "warehouse_upload_events": { "apps": ["warehouse-imports"], "serverWritten": true },
+    "warehouse_scorecards": {
+      "comment": "One completeness scorecard per loaded upload (doc id = upload id), written by the upload pipeline (_warehouse_scorecard.js). Read by the warehouse team (Imports app) and by the upload's own uploader, a member or guest of Warehouse Uploader without the Imports entitlement, through the upload's creatorId the pipeline copies onto it (readerField), like warehouse_uploads.",
+      "apps": ["warehouse-imports"],
+      "readerField": "creatorId",
+      "serverWritten": true
+    },
+    "warehouse_score_history": {
+      "comment": "Per-period completeness scores per source and table, for the Imports trend charts: written by the upload pipeline when a scorecard is made and by scripts/firestore_admin/warehouse_import_score_history.js (legacy scores). Read by the warehouse team only.",
+      "apps": ["warehouse-imports"],
+      "serverWritten": true
+    },
+    "warehouse_intake_settings": { "apps": ["warehouse-imports"], "serverWritten": true },
+    "warehouse_reminders_log": {
+      "comment": "Contributor reminders sent by warehouse_reminders.js (schedule dedupe and the Imports Settings list).",
+      "apps": ["warehouse-imports"],
+      "serverWritten": true
+    },
+    "warehouse_coverage_entries": {
+      "comment": "The warehouse team's review state per source and reporting period ({groupId}__{sourceId}__{periodLabel}): published and scorecard-sent flags and an append-only note log, written only by the coverage callables, which stamp the caller.",
+      "apps": ["warehouse-imports"],
+      "serverWritten": true
+    },
+    "warehouse_query_log": {
+      "comment": "Data Warehouse: every query run, with the row scope it ran under (audit, read by the Imports team).",
+      "serverWritten": true
+    },
+    "warehouse_export_jobs": {
+      "comment": "Data Warehouse export progress, written by warehouseStartExport and the export trigger. Read only by the requester (a member or a corporate guest; WarehouseApi queries creatorId == uid). Holds no spec, storage path or link: the requester gets a short-lived link from warehouseGetExportLink.",
+      "kind": "server",
+      "readerField": "creatorId"
+    },
+    "warehouse_export_requests": {
+      "comment": "What each export was asked for (requester, table, spec) and where its file is, written only by warehouseStartExport and the export trigger, which fires on this collection. No client reads or writes it, so no client-visible document can start or describe an export.",
+      "kind": "server"
+    },
+    "checkers_games": {
+      "comment": "Whole-document immutability after create, no bespoke block needed.",
+      "apps": ["checkers"],
+      "immutableDoc": true
+    },
+    "habits": {
+      "comment": "Private to their creator: ownerIds must be exactly [creatorId], never co-owned, and ownerScoped keeps other members out of reads and writes.",
+      "apps": ["habit-tracker"],
+      "singleOwner": true,
+      "ownerScoped": true
+    },
+    "habit_completions": { "naturalKeyIds": true, "apps": ["habit-tracker"], "singleOwner": true, "ownerScoped": true },
+    "time_entries": {
+      "comment": "Time Tracking: one logged block of work (start and end in UTC, client, project, billable, rate, tags). Each belongs to the person who logged it (singleOwner); ownerScoped keeps other members out, and the app's :admin tier (group owners and admins) reads and corrects everyone's for the team view and exports. On the audit trail because payroll and invoicing are built from it. invoiceId/invoiceNumber/invoicedAt say which invoice billed it: serverFields, set by invoicingIssue and cleared by invoicingVoid, so an entry is never billed twice.",
+      "apps": ["time-tracking"],
+      "singleOwner": true,
+      "ownerScoped": true,
+      "auditTrail": true,
+      "serverFields": ["invoiceId", "invoiceNumber", "invoicedAt"]
+    },
+    "time_timers": {
+      "comment": "Time Tracking: a person's running timer, keyed {groupId}__{uid} so each person has at most one. Stopping it writes a time_entries doc and deletes this one. The :admin tier lists them to see who is clocked in.",
+      "naturalKeyIds": true,
+      "apps": ["time-tracking"],
+      "singleOwner": true,
+      "ownerScoped": true
+    },
+    "time_clients": {
+      "comment": "Time Tracking: the group's client list. Everyone with the app reads it to pick a client; only :edit/:admin add, rename or archive one.",
+      "apps": ["time-tracking"],
+      "writeTier": "edit"
+    },
+    "time_projects": {
+      "comment": "Time Tracking: the group's projects, each optionally under a client. Everyone with the app reads them; only :edit/:admin manage them.",
+      "apps": ["time-tracking"],
+      "writeTier": "edit"
+    },
+    "time_timesheets": {
+      "comment": "Time Tracking: a person's submission of one week, keyed {groupId}__{uid}_{weekStart}. Private to its submitter (singleOwner, ownerScoped); the :admin tier reads every submission to review it.",
+      "naturalKeyIds": true,
+      "apps": ["time-tracking"],
+      "singleOwner": true,
+      "ownerScoped": true,
+      "auditTrail": true
+    },
+    "time_approvals": {
+      "comment": "Time Tracking: an admin's decision (approved or returned) on one person's week, keyed {groupId}__{uid}_{weekStart}. Only the app's :admin tier writes or lists them (adminOnlyCollection), so nobody approves their own week unless they administer the app; the person it names (userId) reads their own.",
+      "naturalKeyIds": true,
+      "apps": ["time-tracking"],
+      "adminOnlyCollection": true,
+      "readerField": "userId",
+      "auditTrail": true
+    },
+    "usage_daily": {
+      "comment": "Per-user, per-day usage counters each client increments for itself (packages/shared_services/lib/usage_meter.dart) whatever app is open: any non-guest member writes their own {date}_{groupId}_{uid} doc without the usage-meter app (memberWrite), only its creator may write one, its identity never changes, and history is never deleted from the client. Server docs ({...}_srvN, gauges) are Admin SDK only. Usage Meter admins read every doc; a user reads their own (readerField).",
+      "apps": ["usage-meter"],
+      "memberWrite": true,
+      "idPattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}_<groupId>_<uid>$",
+      "readerField": "uid",
+      "singleOwner": true,
+      "restrictEditToCreator": true,
+      "blockDelete": true,
+      "immutable": ["ownerIds", "uid", "date"]
+    },
+    "groups": {
+      "comment": "Group docs: the tenant registry and the access inputs computeEntitlements reads. Server-written: group_membership.js's createGroup, addGroupMember, removeGroupMember, setGroupAdmins, setGroupFrozen, updateGroupDetails (descriptive fields: name, logo, domain, organization details) and setGroupDefaultHomeScreenApps, acceptInvitation, setGroupInstalledApps, adminDeleteGroup and guest_users.js (rules plan T7, §4.5). installedApps and availableApps (the private apps a group may install) are written only through the install policy (functions/_app_install_policy.js); managedBy (the managing group) only by devQueueSetGroupPlan. minimumAppSecurityTier is set at creation and afterwards only through functions/_group_tier.js (groupSetMinimumTier, and updateGroupDetails delegating to it). Members read their groups (memberRead, memberIds); developers read every group.",
+      "apps": ["groups"],
+      "serverWritten": true,
+      "memberRead": true,
+      "readerListField": "memberIds",
+      "developerRead": true,
+      "auditTrail": true,
+      "auditAppId": "group-admin",
+      "auditGroupIdFromDocId": true
+    },
+    "memberships": {
+      "comment": "{groupId}_{uid}: a member's existence and role, the main input of rebuildUserAccessIndex. Written only by the group_membership.js callables, adminDeleteGroup and guest_users.js (rules plan T7, §4.5). Members still read their group's memberships (memberRead), and each user their own (readerField). On the audit trail under the Users app (auditAppId), so the group's Users admins read its history.",
+      "serverWritten": true,
+      "memberRead": true,
+      "readerField": "userId",
+      "auditTrail": true,
+      "auditAppId": "users"
+    },
+    "invoicing_documents": {
+      "comment": "Invoices: a group's quotes and invoices (plans/business-suite/INVOICES_DESIGN.md). Everyone with the app reads them; only :edit/:admin write a draft's content (writeTier). Status, number, payments, the public-link payers and every other state change are serverFields, written only by the invoicing callables and the invoices.invoice payment kind, so a document can't be marked issued or paid from the client. Never deleted from the client (blockDelete): invoicingDelete removes drafts with an attributed audit event and issued documents are voided. On the audit trail because they are financial records.",
+      "apps": ["invoices"],
+      "writeTier": "edit",
+      "blockDelete": true,
+      "auditTrail": true,
+      "immutable": ["kind"],
+      "serverFields": ["clientUids", "status", "number", "issuedAt", "issuedBy", "sentAt", "sentTo", "viewedAt", "amountPaidCents", "paidAt",
+        "payments", "payerUids", "voidedAt", "voidReason", "respondedAt", "respondedName", "convertedToId", "convertedFromId",
+        "recurringFromId", "lastReminderAt", "searchPrefixes"],
+      "search": { "fields": ["number", "client.name", "client.organization", "client.email"] },
+      "automation": {
+        "label": "Quotes and invoices",
+        "events": ["record.created", "record.updated"],
+        "fields": ["kind", "status", "number", "client", "currency", "totalCents", "amountPaidCents", "issueDate", "dueDate",
+          "sentAt", "paidAt", "dealId", "notes"],
+        "fieldTypes": { "kind": "string", "status": "string", "number": "string", "client": "map", "currency": "string",
+          "totalCents": "number", "amountPaidCents": "number", "dealId": "string", "notes": "string" },
+        "dateFields": ["issueDate", "dueDate", "sentAt", "paidAt"],
+        "writableFields": ["notes"]
+      }
+    },
+    "invoicing_settings": {
+      "comment": "Invoices: a group's invoicing settings (currency, tax rates, terms, number prefixes), keyed {groupId}__settings. Everyone with the app reads them to write a document; only :edit/:admin change them. On the audit trail: tax rates and terms change what clients are billed.",
+      "naturalKeyIds": true,
+      "apps": ["invoices"],
+      "writeTier": "edit",
+      "auditTrail": true
+    },
+    "invoicing_counters": {
+      "comment": "Invoices: the last invoice and quote number issued in each group (doc id = groupId), incremented by invoicingIssue in the issuing transaction.",
+      "kind": "server"
+    },
+    "invoicing_links": {
+      "comment": "Invoices: public link tokens (functions/_tokens.js; the doc id is the token's sha256, plaintext is never stored) naming the group and document a client's link opens. Revoked when the document is voided.",
+      "kind": "server"
+    },
+    "invoicing_rate_limits": {
+      "comment": "Invoices: per-IP and per-link rate-limit counters of the public invoice page's callables (hashed keys).",
+      "kind": "server"
+    },
+    "invitations": {
+      "comment": "Users-app invitations; `role` becomes the invitee's membership role. Written only by the invitation callables in group_membership.js and the claim-link delivery status (_invitation_links.js). Invitees reach theirs only through a claim link (getInvitationClaim/claimInvitation), never by reading it; members read their group's invitations (memberRead). On the audit trail: the callables stamp the caller, and revokeInvitation stamps a `revoked` status before it removes the doc.",
+      "apps": ["users"],
+      "serverWritten": true,
+      "memberRead": true,
+      "auditTrail": true
+    },
+    "group_members": {
+      "comment": "{groupId}__{uid}: the group member directory (rules plan T9) — the display fields co-members see (email, displayName, photoURL, role, status, guest name). Written only by groupMembersOnMembershipWritten/groupMembersOnUserWritten (functions/group_members.js) and the backfill. Replaces every client read of another user's users/{uid} doc; read by non-guest members of groupId (memberRead: groupId == proves the tenant, no app entitlement; the docs carry no appId).",
+      "serverWritten": true,
+      "memberRead": true
+    },
+    "invitation_lookup_rate_limits": {
+      "comment": "Rate-limit counters for the invitation callables (lookupInvitation, getInvitationClaim, claimInvitation, resendInvitation; hashed keys).",
+      "kind": "server"
+    },
+    "invitation_claim_tokens": {
+      "comment": "Invitation claim links (functions/_invitation_links.js): the doc id is the sha256 of the link token, never the token itself; expiry, single use and revocation are fields here. Holds no contact details.",
+      "kind": "server"
+    },
+    "password_reset_rate_limits": {
+      "comment": "sendPasswordReset's per-IP/per-address/global rate-limit counters (functions/auth.js; hashed keys).",
+      "kind": "server"
+    },
+    "password_reset_requests": {
+      "comment": "Queued password-reset requests (functions/auth.js): sendPasswordReset enqueues, passwordResetOnRequestCreated delivers and deletes. Holds usernames, so admin-only read.",
+      "kind": "server"
+    },
+    "projects": {
+      "comment": "Per-field write locks (membershipLock()'s direct successor). Lists: only the owner may add/remove members (enforced by taskListAddMembers/taskListRemoveMember); other members are still blocked from raw writes to members/ownerIds regardless.",
+      "apps": ["lists"],
+      "creatorOnly": ["members", "ownerIds"],
+      "subcollections": {
+        "tasks": {
+          "comment": "A list's tasks (packages/task_list). Feeds Automations; the group comes from the list.",
+          "automation": {
+            "label": "Tasks",
+            "events": ["record.created", "record.updated", "record.deleted"],
+            "fields": ["text", "description", "tags", "isCompleted", "creatorId", "createdAt"],
+            "fieldTypes": { "text": "string", "description": "string", "tags": "list", "isCompleted": "boolean",
+              "creatorId": "uid", "createdAt": "date" }
+          }
+        }
+      }
+    },
+    "forms": {
+      "comment": "FormsService.assignForm() is only ever called by the form's creator; locks out a self-escalating assignee.",
+      "apps": ["forms"],
+      "creatorOnly": ["ownerIds"]
+    },
+    "trivia_games": {
+      "comment": "Host-only in client code (_startGame/_advanceQuestion); this is the server-side enforcement. creatorId == hostId always (no host-transfer feature). protectedRoleField additionally stops the host's own uid from being silently dropped/reassigned via memberIds/ownerIds writes, even though joining is otherwise open.",
+      "apps": ["trivia-night"],
+      "creatorOnly": ["status", "currentQuestionIndex", "questionStartedAt", "winnerId"],
+      "protectedRoleField": "hostId"
+    },
+    "calendar_calendars": {
+      "comment": "Calendar: personal and shared calendars (plans/business-suite/BOOKING_DESIGN.md). Only the people in ownerIds read one (ownerScoped); only its creator edits, shares (writes ownerIds) or deletes it (restrictEditToCreator), and members leave through calendarLeaveCalendar. A person's personal calendar is {groupId}__personal_{uid}. onCalendarCalendarWritten copies a calendar's members to its events and deletes its events with it.",
+      "apps": ["calendar"],
+      "ownerScoped": true,
+      "restrictEditToCreator": true,
+      "immutable": ["kind"]
+    },
+    "calendar_events": {
+      "comment": "calendar_events relies on apps/calendar's sharedEditing: false for its creator/editor-tier edit model (a deliberate, confirmed widening — see FIRESTORE_PERMISSIONS.md's \"sharedEditing\" section) — this entry closes the one gap that alone can't cover: the creator's own client can still write ScopedCollection-injected identity fields and the Cloud Function-owned watermark directly, bypassing CalendarService. attendeeIds is deliberately NOT included: CalendarService.inviteAttendees/removeAttendee legitimately write it directly from the client (arrayUnion/ arrayRemove) in the same batch as the attendees subcollection doc, and there is no server callable that owns it instead — locking it out would break invite/remove-attendee entirely.",
+      "apps": ["calendar"],
+      "adminOnly": ["ownerIds", "materializedThrough", "createdAt"],
+      "subcollections": {
+        "attendees": {
+          "selfKeyed": {"fields": ["status", "respondedAt"], "selfCreate": false, "selfDelete": false, "editorsWrite": true},
+          "collectionGroup": {"readerField": "uid"}
+        }
+      }
+    },
+    "event_planner_events": {
+      "comment": "Server-maintained aggregates and schedule state plus ScopedCollection identity fields.",
+      "apps": ["event-planner"],
+      "adminOnly": ["ownerIds", "rsvpCounts", "rsvpCountsSourceTime", "createdAt", "autoReminderDueAt", "autoReminderStatus",
+                    "autoReminderSentAt", "autoReminderAttempts", "autoReminderClaimedAt",
+                    "deadlineSummaryDueAt", "deadlineSummaryStatus", "deadlineSummarySentAt",
+                    "deadlineSummaryClaimedAt", "dietarySummary"]
+    },
+    "vendor_market_listings": {
+      "comment": "Operator staff only; claimed vendors (other groups) use functions/vendor_hub.js. Ownership changes only through the server-side claim flow. Never deleted (archived instead): server-written records reference it.",
+      "apps": ["marketplace-admin"],
+      "writeTier": "edit",
+      "blockDelete": true,
+      "adminOnly": ["ownerIds", "claimStatus", "claimedAt", "claimedByUid", "vendorHomeGroupId", "createdAt"],
+      "publishTo": "public_vendor_market_listings"
+    },
+    "vendor_market_listing_private": { "apps": ["marketplace-admin"], "writeTier": "edit", "adminOnly": ["ownerIds", "createdAt"] },
+    "ai_chat_conversations": {
+      "comment": "One doc per conversation (random id), private to its creator (ownerScoped: lists filter creatorId ==); messages are its subcollection. Until 2026-11 these lived under ai_chat_conversations/{uid}/conversations, copied over by migrations/2026-11-05_flatten_ai_chat.js.",
+      "apps": ["ai-chat"],
+      "ownerScoped": true
+    },
+    "ai_chat_snippets": { "apps": ["ai-chat"], "ownerScoped": true },
+    "ai_pipeline_profiles": { "apps": ["ai-pipelines"] },
+    "ai_pipeline_runs": { "apps": ["ai-pipelines"] },
+    "ai_pipelines": { "apps": ["ai-pipelines"] },
+    "announcements": { "apps": ["announcements"] },
+    "app_requests": {
+      "comment": "App Maker requests. Platform admins moderate every group's from Dev Pipeline, which reads them through devPipelineOverview; status changes and deletes go through appMakerAdminSetRequestStatus / appMakerAdminDeleteRequest (functions/app_maker.js), and a requester deletes their own through appMakerDeleteRequest. Tier 4: on the audit trail, and a delete is a soft delete (deletedAt/deletedBy, server-written) so no client can remove or restore a request, and adminComments lets them and platform developers read and comment on any group's request. The review state (status, decline fields and stamp, builtAppId, shippedAt) and the pipeline fields (queue, dispatch, PR and deploy mirrors) are serverFields: only the Admin SDK writes them, because the dev change lifecycle installs builtAppId into the request's group when it ships. submitterName/submitterEmail are stamped from the creator's Auth record by appMakerAutoDispatchRequest, so a request can't claim another person's identity.",
+      "apps": ["app-maker"],
+      "adminComments": true,
+      "commentThread": true,
+      "auditTrail": true,
+      "blockDelete": true,
+      "restrictEditToCreator": true,
+      "serverFields": ["status", "declineReasonCode", "declineReasonLabel", "declineNote", "builtAppId", "shippedAt",
+                       "devStatus", "queueItemId", "agentQueuedAt", "agentJobId", "agentDispatchedAt",
+                       "agentDispatchSource", "agentDispatchError", "agentClaimedAt", "prUrl", "prNumber", "prState",
+                       "prSyncedAt", "liveAt", "githubIssueUrl", "githubIssueNumber", "parentRequest",
+                       "regressionOf", "editedAt", "editedBy", "declinedAt", "declinedBy", "platformSource",
+                       "submitterName", "submitterEmail", "deletedAt", "deletedBy"]
+    },
+    "bets": { "apps": ["bets"] },
+    "budgie_ting": { "naturalKeyIds": true, "apps": ["budgieting"] },
+    "bug_reports": {
+      "comment": "Improve Apps bug reports (Regulated tier: audited, and deleted through a callable that keeps the record). Status changes go through improveBluejaySetItemStatus: the resolution flags and the status fields that name who acted are serverFields, so a ticket is never filed already resolved. The pipeline fields (queue, dispatch, PR and deploy mirrors, a regression report's link to what broke, the requester's edit stamp) are serverFields: only the Admin SDK writes them, so a ticket cannot be made to read as merged or live from the client.",
+      "apps": ["improve-apps"],
+      "stewardRead": true,
+      "adminComments": true,
+      "commentThread": true,
+      "serverFields": ["devStatus", "queueItemId", "agentQueuedAt", "agentJobId", "agentDispatchedAt",
+                       "agentDispatchSource", "agentDispatchError", "agentClaimedAt", "prUrl", "prNumber", "prState",
+                       "prSyncedAt", "liveAt", "githubIssueUrl", "githubIssueNumber", "parentRequest",
+                       "regressionOf", "editedAt", "editedBy", "declinedAt", "declinedBy", "platformSource",
+                       "voteCount", "upvoteCount", "downvoteCount", "upvotedBy", "downvotedBy", "deletedAt", "deletedBy",
+                       "statusMessage", "statusUpdatedAt", "statusUpdatedBy", "statusAction", "closedReason",
+                       "closedReasonCode", "closedReasonLabel", "closedAt", "closedBy", "fixMessage", "fixedAt", "fixedBy", "isClosed", "isFixed"],
+      "auditTrail": true,
+      "blockDelete": true,
+      "subcollections": {
+        "votes": {
+          "comment": "One vote per member, keyed by the voter's uid (value 1, -1, or 0 once withdrawn), on the audit trail and never deleted. The ticket's tallies are serverFields recounted from these docs by a trigger.",
+          "selfKeyed": {"fields": ["userId", "value", "votedAt"], "selfCreate": true, "selfDelete": false},
+          "auditTrail": true,
+          "blockDelete": true
+        }
+      }
+    },
+    "business_like_that_searches": { "apps": ["business-like-that"] },
+    "calendar_labels": { "apps": ["calendar"] },
+    "ce_credits": { "apps": ["continuing-education"] },
+    "ce_profiles": {
+      "apps": ["continuing-education"],
+      "automation": {
+        "events": ["record.created", "record.updated", "record.deleted"],
+        "fields": ["userId", "province", "cycleStartDate", "cycleEndDate"],
+        "dateFields": ["cycleStartDate", "cycleEndDate"]
+      }
+    },
+    "chess_games": { "apps": ["chess"] },
+    "claude_invaders_scores": { "naturalKeyIds": true, "apps": ["claude-invaders"] },
+    "commercial_property_brokerages": { "apps": ["commercial-property"], "auditTrail": true, "blockDelete": true },
+    "commercial_property_producers": { "apps": ["commercial-property"], "auditTrail": true, "blockDelete": true },
+    "contact_activities": {
+      "comment": "Contacts' activity log: calls, meetings, emails and notes logged against one contact. Third-party personal information, so on the audit trail; deleting one sets deletedAt (its author or an editor). contactId is fixed at create.",
+      "apps": ["contacts"],
+      "auditTrail": true,
+      "blockDelete": true,
+      "immutable": ["contactId"]
+    },
+    "contacts": {
+      "comment": "The group's shared contact list (people and organizations). Holds third-party personal information: every member reads, a member edits what they added and editors edit any (the app is sharedEditing false), guests never read (Contacts isn't embeddable). linkedUids names the client portal accounts that are this contact, unlinkedUids the accounts staff unlinked or dismissed (never re-linked by email), and portalSuggestedClients the clients who may be this contact, waiting for staff to link or dismiss them; only functions/client_portal.js writes them. On the audit trail; deleting one sets deletedAt.",
+      "apps": ["contacts"],
+      "auditTrail": true,
+      "blockDelete": true,
+      "serverFields": ["linkedUids", "unlinkedUids", "portalSuggestedClients", "searchPrefixes"],
+      "search": { "fields": ["name", "organizationName", "emails", "phones"], "digitFields": ["phones"] }
+    },
+    "conversations": {
+      "comment": "Chat conversations. ownerIds equals members, so ownerScoped makes a conversation and its messages readable and writable only by its participants (and the chat :admin tier). Conversations are created only by the chatStartConversation and chatStartClientConversation callables, which put the caller among the members and set creatorId to them, and membership (members, memberEmails, ownerIds, isGroupChat, groupName, clientUid) changes only through the chat callables; participants update the rest (lastMessage). guestWritable: a portal client (`{g}:chat:guest`) the server made a participant reads and posts in that conversation like any participant, and in no other. No client creates or deletes a conversation.",
+      "apps": ["chat"],
+      "ownerScoped": true,
+      "guestWritable": true,
+      "blockCreate": true,
+      "blockDelete": true,
+      "adminOnly": ["members", "memberEmails", "ownerIds", "isGroupChat", "groupName", "clientUid"],
+      "immutable": ["directChatKey"],
+      "subcollections": {
+        "messages": {
+          "comment": "Each message is its sender's (senderId, with their own senderEmail, timestamped at the request time): only the sender edits or deletes it. Other participants mark only their own uid in readBy and their own entry in reactionsByUser. System messages (senderId 'system') are written by the server.",
+          "authorField": "senderId",
+          "createdAtField": "timestamp",
+          "authorEmailField": "senderEmail",
+          "authorMayUpdate": ["isDeleted", "text", "imageUrl", "place"],
+          "selfArrayFields": ["readBy"],
+          "selfMapFields": ["reactionsByUser"]
+        }
+      }
+    },
+    "convo_starter_history": { "apps": ["convo-starter"] },
+    "convo_starter_settings": { "apps": ["convo-starter"] },
+    "crm_activities": {
+      "comment": "CRM: the activity log of each deal (notes, calls, emails, meetings, stage and status changes, quote events). Members with the app read every deal's log; authors edit and delete their own entries (restrictEditToCreator), and the deal it belongs to never changes. Quote events are written by crmOnInvoicingDocumentWritten.",
+      "apps": ["crm"],
+      "restrictEditToCreator": true,
+      "immutable": ["dealId"]
+    },
+    "crm_deals": {
+      "comment": "CRM: a group's deals (plans/business-suite/CRM_DESIGN.md). Every member with the app reads and works them (sales teams share deals). The latest quote's status and the quote that won it are serverFields, written by crmOnInvoicingDocumentWritten when a document naming the deal changes. Never deleted from the client (blockDelete): a deal is closed as lost, and crmDeleteDeal removes one entered by mistake with an attributed audit event. On the audit trail: deal values and outcomes feed the forecast.",
+      "apps": ["crm"],
+      "blockDelete": true,
+      "auditTrail": true,
+      "serverFields": ["quoteStatus", "wonByQuoteId", "searchPrefixes"],
+      "search": { "fields": ["title", "contact.name", "contact.organization"] },
+      "automation": {
+        "label": "Deals",
+        "events": ["record.created", "record.updated"],
+        "fields": ["title", "pipelineId", "stageId", "status", "valueCents", "currency", "ownerId", "contact", "expectedCloseDate",
+          "source", "tags", "lostReason", "closedAt", "stageEnteredAt", "lastActivityAt", "quoteStatus"],
+        "fieldTypes": { "title": "string", "pipelineId": "string", "stageId": "string", "status": "string", "valueCents": "number",
+          "currency": "string", "ownerId": "uid", "contact": "map", "source": "string", "tags": "list", "lostReason": "string",
+          "quoteStatus": "string" },
+        "dateFields": ["expectedCloseDate", "closedAt", "stageEnteredAt", "lastActivityAt"],
+        "writableFields": ["stageId", "stageEnteredAt", "tags", "source", "expectedCloseDate", "lastActivityAt"]
+      }
+    },
+    "crm_settings": {
+      "comment": "CRM: a group's pipelines and their stages, lost reasons, lead sources and whether an accepted quote wins its deal, keyed {groupId}__settings. Everyone with the app reads them; only :edit/:admin change them. On the audit trail.",
+      "naturalKeyIds": true,
+      "apps": ["crm"],
+      "writeTier": "edit",
+      "auditTrail": true
+    },
+    "daily_cost": { "naturalKeyIds": true, "apps": ["daily-cost"] },
+    "data_modeler_fields": { "apps": ["data-modeler"] },
+    "data_modeler_models": { "apps": ["data-modeler"] },
+    "data_modeler_projects": { "apps": ["data-modeler"] },
+    "documents": { "apps": ["documents"] },
+    "domain_verifications": {
+      "comment": "The platform team's checklist for setting up each group's sending domain in Amazon SES (Groups admin console, DomainVerificationScreen). Platform operations, not tenant data: no group member reads it and nothing server-side does; docs carry the groupId they concern only as a label. Admins and developers (who edit group domains) maintain it.",
+      "kind": "platform_admin",
+      "adminWritable": true,
+      "developerRead": true,
+      "developerWritable": true
+    },
+    "expense_entries": {
+      "comment": "Expenses: one expense (a receipt or mileage) belonging to the person who spent it (singleOwner); ownerScoped keeps other members out, and the app's :admin tier reads everyone's to approve and reimburse them (plans/business-suite/EXPENSES_DESIGN.md). Status and every decision field are serverFields, written only by the expenses* callables and expensesOnEntryWritten, so nobody approves or reimburses their own expense from the client; invoiceId/invoiceNumber/invoicedAt are set and cleared by invoicingIssue/invoicingVoid when Invoices re-bills it. Never deleted from the client (blockDelete): expensesDelete removes drafts and rejected ones. On the audit trail because reimbursements and the books are built from it.",
+      "apps": ["expenses"],
+      "singleOwner": true,
+      "ownerScoped": true,
+      "blockDelete": true,
+      "auditTrail": true,
+      "serverFields": ["status", "submittedAt", "decidedBy", "decidedAt", "decisionNote", "reimbursedAt", "reimbursedBy", "changedAfterApproval", "invoiceId", "invoiceNumber", "invoicedAt"]
+    },
+    "expense_settings": {
+      "comment": "Expenses: a group's categories, approval and receipt rules, currency and mileage rate, keyed {groupId}__settings. Everyone with the app reads them; only :edit/:admin change them. On the audit trail.",
+      "naturalKeyIds": true,
+      "apps": ["expenses"],
+      "writeTier": "edit",
+      "auditTrail": true
+    },
+    "hr_checklist_templates": {
+      "comment": "HR: onboarding and offboarding checklist templates. Everyone with the app reads them; only :edit/:admin write them. On the audit trail.",
+      "apps": ["hr"],
+      "writeTier": "edit",
+      "auditTrail": true
+    },
+    "hr_checklists": {
+      "comment": "HR: a checklist template applied to one person. Written only by hrStartChecklist/hrCompleteChecklistTask/hrCancelChecklist, which let each assignee tick only their own tasks. ownerIds = the person, their manager, the HR admin who started it and every assignee, so ownerScoped shows each of them the checklists they have tasks on; HR :admin reads all. On the audit trail.",
+      "apps": ["hr"],
+      "serverWritten": true,
+      "ownerScoped": true,
+      "auditTrail": true
+    },
+    "import_batches": {
+      "comment": "Spreadsheet import (plans/spreadsheet-import §5): one record per import a member runs through the shared import screen (packages/shared_services/lib/record_import_store.dart), written before any imported record, with its rows subcollection listing the ids it created and the old values of the fields it updated, so the import can be undone. appId is the importing app, so apps lists every app that has adopted import. ownerScoped: a member sees and undoes their own imports, the app's :admin tier sees and undoes everyone's. The spec, collection and parent never change after create; never deleted (an undone import is marked undone). On the audit trail. Adding an app to apps is a permissions change (change-firestore-permissions).",
+      "apps": ["contacts", "crm", "inventory", "hr", "time-tracking", "shop", "lists"],
+      "ownerScoped": true,
+      "blockDelete": true,
+      "auditTrail": true,
+      "immutable": ["specId", "collection", "parentId"],
+      "subcollections": {
+        "rows": { "comment": "Chunks of up to 400 entries: the records one write batch of the import created or updated. Written in the same batch as those records; never deleted, and on the audit trail like the batch record.", "blockDelete": true, "auditTrail": true }
+      }
+    },
+    "hr_people": {
+      "comment": "HR: the staff directory, one doc per person who works for the group, with or without a Bluejay account (userId). Everyone with the app reads it; only HR editors (:edit/:admin) write it, and a person edits their own work phone, pronouns and about text through hrUpdateMyProfile (plans/business-suite/HR_DESIGN.md). userId and managerUid decide access (the linked account reads the person's hr_private; the manager sees and decides their time off), so they are serverFields, set only by hrSetPersonLinks for HR :admin: an editor can't link a person to their own account or make themself the manager. On the audit trail.",
+      "apps": ["hr"],
+      "writeTier": "edit",
+      "auditTrail": true,
+      "serverFields": ["userId", "managerUid"]
+    },
+    "hr_policies": {
+      "comment": "HR: the policy library (handbook sections and policies with a version). Everyone with the app reads them; only :edit/:admin write them, and raising version asks everyone to acknowledge again. On the audit trail.",
+      "apps": ["hr"],
+      "writeTier": "edit",
+      "auditTrail": true
+    },
+    "hr_policy_acks": {
+      "comment": "HR: one member's acknowledgement of one version of a policy. The member creates their own (creatorId = caller); nobody edits or deletes one. ownerScoped: members see their own, HR :admin sees everyone's for the acknowledgement report. On the audit trail.",
+      "apps": ["hr"],
+      "ownerScoped": true,
+      "immutableDoc": true,
+      "blockDelete": true,
+      "auditTrail": true
+    },
+    "hr_private": {
+      "comment": "HR: a person's private details (personal contact, home address, birthday, emergency contacts), doc id = their hr_people id. Read and written only through hrGetPrivate/hrSavePrivate, which allow the person themself and HR :admin; other members, editors included, never see them. On the audit trail with every value redacted.",
+      "kind": "server",
+      "apps": ["hr"],
+      "auditTrail": true,
+      "auditRedact": ["personalEmail", "personalPhone", "homeAddress", "birthDate", "emergencyContacts"]
+    },
+    "hr_settings": {
+      "comment": "HR: a group's leave types and allowances, working week, holidays, leave year, departments and locations, keyed {groupId}__settings. Everyone with the app reads them; only :edit/:admin change them. On the audit trail.",
+      "naturalKeyIds": true,
+      "apps": ["hr"],
+      "writeTier": "edit",
+      "auditTrail": true
+    },
+    "hr_time_off": {
+      "comment": "HR: time-off requests. Written only by the hr*TimeOff callables, which compute the days, check the balance and record every decision, so nobody approves their own request from the client. ownerIds = the requester and their manager (kept current by hrOnPersonWritten), so ownerScoped gives each member their own and a manager their reports'; HR :admin reads all. On the audit trail.",
+      "apps": ["hr"],
+      "serverWritten": true,
+      "ownerScoped": true,
+      "auditTrail": true
+    },
+    "inventory_items": {
+      "comment": "Inventory: the items a group stocks (plans/business-suite/INVENTORY_DESIGN.md). Everyone with the app reads them; only :edit/:admin write them. Archived, never deleted (blockDelete), so movements keep their item. The stock levels (stock per location, onHand, lowStock, lastMovementAt) are serverFields, written only by inventoryOnMovementCreated as it applies movements. On the audit trail.",
+      "apps": ["inventory"],
+      "writeTier": "edit",
+      "blockDelete": true,
+      "auditTrail": true,
+      "serverFields": ["stock", "onHand", "lowStock", "lastMovementAt", "searchPrefixes"],
+      "search": { "fields": ["name", "sku"], "hiddenWhen": ["archived"] }
+    },
+    "inventory_locations": {
+      "comment": "Inventory: the places a group keeps stock. Everyone with the app reads them; only :edit/:admin write them. Archived, never deleted. On the audit trail.",
+      "apps": ["inventory"],
+      "writeTier": "edit",
+      "blockDelete": true,
+      "auditTrail": true
+    },
+    "inventory_movements": {
+      "comment": "Inventory: one change to stock (receive, issue, transfer, count, adjust). Any member with the app records one; nobody edits or deletes one (immutableDoc, blockDelete). inventoryOnMovementCreated applies it to its item exactly once and writes the outcome (status, delta, balanceAfter, rejectedReason, appliedAt), which no client may set. On the audit trail.",
+      "apps": ["inventory"],
+      "immutableDoc": true,
+      "blockDelete": true,
+      "auditTrail": true,
+      "serverFields": ["status", "delta", "balanceAfter", "rejectedReason", "appliedAt"]
+    },
+    "inventory_purchase_orders": {
+      "comment": "Inventory: purchase orders to vendors (a vendor snapshot from Contacts, lines of items). Everyone with the app reads them; only :edit/:admin write them. Cancelled, never deleted. What has been received per line (received, lastReceivedAt) is written only by inventoryOnMovementCreated as receipts are applied. On the audit trail.",
+      "apps": ["inventory"],
+      "writeTier": "edit",
+      "blockDelete": true,
+      "auditTrail": true,
+      "serverFields": ["received", "lastReceivedAt"]
+    },
+    "inventory_settings": {
+      "comment": "Inventory: a group's currency, categories, units, low-stock alert recipients and purchase order counter, keyed {groupId}__settings. Everyone with the app reads them; only :edit/:admin change them. On the audit trail.",
+      "naturalKeyIds": true,
+      "apps": ["inventory"],
+      "writeTier": "edit",
+      "auditTrail": true
+    },
+    "farkle_stats": { "naturalKeyIds": true, "apps": ["farkle"] },
+    "feature_requests": {
+      "comment": "Improve Apps ideas (Regulated tier: audited, and deleted through a callable that keeps the record). Status changes go through improveBluejaySetItemStatus: the resolution flags and the status fields that name who acted are serverFields, so a ticket is never filed already resolved. The pipeline fields (queue, dispatch, PR and deploy mirrors, the requester's edit stamp) are serverFields: only the Admin SDK writes them, so a ticket cannot be made to read as merged or live from the client. requestKind and targetTier mark an Add Apps tier-upgrade request (functions/_app_tier_upgrade.js, appTierUpgradeRequest); requestKind 'usage-suggestion' with suggestionKey marks a usage-based feature suggestion the requester accepted (functions/_feature_suggestions.js); requestKind 'dashboard' with dashboardRequest (dashboardId, availableSources) marks a Dashboards request filed by dashboardsRequest (functions/_dashboards.js); its title and description are neutral, since the request text is private to the requester's dashboard. All of them are server-only too.",
+      "apps": ["improve-apps"],
+      "stewardRead": true,
+      "adminComments": true,
+      "commentThread": true,
+      "serverFields": ["devStatus", "queueItemId", "agentQueuedAt", "agentJobId", "agentDispatchedAt",
+                       "agentDispatchSource", "agentDispatchError", "agentClaimedAt", "prUrl", "prNumber", "prState",
+                       "prSyncedAt", "liveAt", "githubIssueUrl", "githubIssueNumber", "parentRequest",
+                       "regressionOf", "editedAt", "editedBy", "declinedAt", "declinedBy", "platformSource",
+                       "voteCount", "upvoteCount", "downvoteCount", "upvotedBy", "downvotedBy", "deletedAt", "deletedBy",
+                       "statusMessage", "statusUpdatedAt", "statusUpdatedBy", "statusAction", "closedReason",
+                       "closedReasonCode", "closedReasonLabel", "closedAt", "closedBy", "completionMessage", "completedAt", "completedBy", "isClosed", "isCompleted",
+                       "requestKind", "targetTier", "suggestionKey", "dashboardRequest"],
+      "auditTrail": true,
+      "blockDelete": true,
+      "subcollections": {
+        "votes": {
+          "comment": "One vote per member, keyed by the voter's uid (value 1, -1, or 0 once withdrawn), on the audit trail and never deleted. The ticket's tallies are serverFields recounted from these docs by a trigger.",
+          "selfKeyed": {"fields": ["userId", "value", "votedAt"], "selfCreate": true, "selfDelete": false},
+          "auditTrail": true,
+          "blockDelete": true
+        }
+      }
+    },
+    "dashboards": {
+      "comment": "Dashboards (plans/dashboards/OVERVIEW.md): one person's dashboard, a JSON spec the shared renderer draws from their own data. Private to its owner (singleOwner, ownerScoped). The owner edits title, spec, pinned and layout directly; everything the request pipeline decides is a serverField: status, the request links and the private request text (requestPrompt, requestHistory, which the job reads from here because the Improve Apps idea carries none) are written by dashboardsRequest, dashboardsRequestTweak and the queue mirror, draftSpec and sourceIds by the publish step after the server validator and an access-index check (functions/_dashboard_artifact.js), publishedAt by dashboardsApproveDraft or by dashboardsRequest when the in-app builder's spec passes the same check (functions/_dashboard_instant.js), so a client can't mark its own spec as reviewed or published. versions holds immutable snapshots of each spec: the owner adds one for a direct edit (only its note can change afterwards) and the server writes the agent's drafts and the in-app builder's specs.",
+      "apps": ["dashboards"],
+      "singleOwner": true,
+      "ownerScoped": true,
+      "serverFields": ["status", "draftSpec", "draftVersionId", "requestPrompt", "requestHistory", "queueItemId", "requestId", "sourceIds", "publishedAt"],
+      "subcollections": {
+        "versions": {
+          "comment": "Immutable spec snapshots: created by the owner (creatorId, createdAt the request time) or the server, never deleted; only the note may change.",
+          "authorField": "creatorId",
+          "authorMayUpdate": ["note"],
+          "createdAtField": "createdAt",
+          "blockDelete": true
+        }
+      }
+    },
+    "dashboard_shares": {
+      "comment": "Dashboards' public snapshot links (plans/dashboards/OVERVIEW.md section 9, functions/_dashboard_share.js): the doc id is the link token's sha256 (functions/_tokens.js; the plaintext is never stored), holding the snapshot the owner's device computed, its expiry and revocation. Written only by the share callables, which stamp the owner, so create, refresh and revoke are on the audit trail (under Dashboards, the snapshot itself redacted); read only through dashboardsShareList and dashboardsPublicGet. stats/views counts public views apart from the audited doc.",
+      "kind": "server",
+      "auditTrail": true,
+      "auditAppId": "dashboards",
+      "auditRedact": ["snapshot"],
+      "subcollections": { "stats": { "serverWritten": true } }
+    },
+    "dashboard_share_rate_limits": {
+      "comment": "Dashboards: per-IP and per-link rate-limit counters of the public snapshot page's callable (hashed keys).",
+      "kind": "server"
+    },
+    "dashboard_build_rate_limits": {
+      "comment": "Dashboards: per-person counters of in-app builds (functions/_dashboard_instant.js), keyed by uid. Over the limit, a request goes to the development queue instead.",
+      "kind": "server"
+    },
+    "files": {
+      "comment": "Storage app files. clientUids (the portal clients a file is shared with, or who uploaded it) is kept by the client-link triggers from sharedWithIds and clientUploaderUid; a client reads those docs through clientReaderListField and downloads through storageDownloadFile. A client's upload is registered by storageRegisterClientUpload, which alone sets clientUploaderUid and fromClient.",
+      "apps": ["storage"],
+      "publishTo": "public_files",
+      "serverFields": ["clientUids", "clientUploaderUid", "fromClient"]
+    },
+    "flashcard_decks": { "apps": ["flashcards"], "ownerScoped": true },
+    "flashcard_study_records": { "naturalKeyIds": true, "apps": ["flashcards"], "ownerScoped": true },
+    "flashcards": { "apps": ["flashcards"], "ownerScoped": true },
+    "civ_empire_games": {
+      "comment": "Civ Empire multiplayer games. The creator writes the doc once (seats, computer players, map seed, pace); after that only the civEmpirePlay callable changes it (functions/civ_empire.js on the shared _sealed_turn_games.js), keeping the turn counters and the result (winner, winners). Each revealed turn's orders are written as their own doc under turns/{turn} by the callable, so a long game stays under the document size limit; players read them through the game's read rule.",
+      "apps": ["civ-empire"],
+      "immutableDoc": true,
+      "subcollections": {
+        "turns": { "serverWritten": true },
+        "presence": {
+          "comment": "One doc per player, keyed by their uid: when they last had the game open, so the others can see who is online.",
+          "selfKeyed": { "fields": ["userId", "lastSeenAt", "online"], "selfCreate": true, "selfDelete": false }
+        }
+      }
+    },
+    "civ_empire_solo_games": {
+      "comment": "Saved solo Civ Empire games against bots: the map setup on the doc, and each played turn's orders (the player's and the bots') under turns/{turn}, so the game can be replayed to where it was left. Only their owner reads or writes them.",
+      "apps": ["civ-empire"],
+      "ownerScoped": true
+    },
+    "civ_empire_sealed_orders": {
+      "comment": "One player's orders for a Civ Empire turn, held by the civEmpirePlay callable until every player has sent theirs and then deleted as the turn is revealed under civ_empire_games/{gameId}/turns. No client reads or writes it, so nobody sees a rival's orders early.",
+      "kind": "server"
+    },
+    "civ_empire_stats": { "naturalKeyIds": true, "apps": ["civ-empire"] },
+    "flock_games": {
+      "comment": "Flock multiplayer games. The creator writes the doc once (seats, map seed, pace); after that only the flockPlay callable changes it (functions/flock.js), revealing each turn's orders once every player has sent theirs. Whole-document immutability, as for checkers_games.",
+      "apps": ["flock"],
+      "immutableDoc": true
+    },
+    "flock_sealed_orders": {
+      "comment": "One player's orders for a Flock turn, held by the flockPlay callable until every player has sent theirs and then deleted as the turn is revealed on flock_games. No client reads or writes it, so nobody sees a rival's orders early.",
+      "kind": "server"
+    },
+    "flock_stats": { "naturalKeyIds": true, "apps": ["flock"] },
+    "form_assignment_delivery_requests": { "apps": ["forms"] },
+    "form_assignments": { "apps": ["forms"], "serverFields": ["clientUids", "answers", "answersUpdatedAt"] },
+    "form_templates": { "apps": ["forms"] },
+    "gallery_photos": { "apps": ["art-gallery"] },
+    "gift_categories": { "apps": ["people"] },
+    "gift_ideas": { "apps": ["people"], "ownerScoped": true },
+    "improve_bluejay_subscriptions": { "naturalKeyIds": true, "apps": ["improve-apps"], "auditTrail": true, "blockDelete": true },
+    "insure_me_applications": { "apps": ["get-insurance"], "auditTrail": true, "blockDelete": true },
+    "language_learner_conversations": { "apps": ["language-learner"], "ownerScoped": true },
+    "language_learner_messages": { "apps": ["language-learner"], "ownerScoped": true },
+    "language_learner_settings": { "naturalKeyIds": true, "apps": ["language-learner"], "ownerScoped": true },
+    "language_learner_vocab": { "apps": ["language-learner"], "ownerScoped": true },
+    "notes": {
+      "comment": "Readable and editable only by its owners: the creator plus everyone it is shared with (ownerIds = creatorId + sharedWithIds, written together).",
+      "apps": ["notes"],
+      "ownerScoped": true
+    },
+    "othello_games": { "apps": ["othello"] },
+    "people": { "apps": ["people"], "ownerScoped": true },
+    "personal_contact_activities": {
+      "comment": "Activity logged against a personal_contacts doc, private to its author like the contact itself (singleOwner, ownerScoped; the :admin tier still reads them). Audited and soft-deleted like contact_activities; contactId is fixed at create.",
+      "apps": ["contacts"],
+      "singleOwner": true,
+      "ownerScoped": true,
+      "auditTrail": true,
+      "blockDelete": true,
+      "immutable": ["contactId"]
+    },
+    "personal_contacts": {
+      "comment": "A member's own contacts, kept beside the group's shared contacts collection. singleOwner and ownerScoped: only the person who added one reads or edits it, plus the :admin tier as with every ownerScoped collection. Audited and soft-deleted like contacts.",
+      "apps": ["contacts"],
+      "singleOwner": true,
+      "ownerScoped": true,
+      "auditTrail": true,
+      "blockDelete": true,
+      "serverFields": ["searchPrefixes"],
+      "search": { "fields": ["name", "organizationName", "emails", "phones"], "digitFields": ["phones"] }
+    },
+    "photo_albums": { "apps": ["photo-albums"] },
+    "presentation_decks": {
+      "comment": "Presentations: a group's slide decks, the slides stored on the deck. Members create decks and edit their own; :edit/:admin edit any. Each save bumps version and writes the saved deck to versions/{n} in the same transaction. Audited and never hard-deleted: the deck's creator soft-deletes it (deletedAt), so the version history and its audit trail stay.",
+      "apps": ["presentations"],
+      "auditTrail": true,
+      "blockDelete": true,
+      "creatorOnly": ["deletedAt"],
+      "subcollections": {
+        "versions": {
+          "comment": "One doc per save, keyed by version number: the whole deck as saved, with the saver and their note. The app only ever creates these; restoring a version saves its content as a new one.",
+          "auditTrail": true,
+          "blockDelete": true
+        }
+      }
+    },
+    "polls": {
+      "comment": "ownerIds = the participants (creator included), so only they read the poll. Only the creator edits, closes or deletes it. The results (voteCounts, voterCount, and voterIds unless the poll is anonymous) are serverFields recounted from the ballots by pollsOnVoteWritten; isAnonymous is fixed at creation so a poll's ballots can't be revealed later.",
+      "apps": ["polls"],
+      "ownerScoped": true,
+      "restrictEditToCreator": true,
+      "immutable": ["isAnonymous"],
+      "serverFields": ["voteCounts", "voterCount", "voterIds"],
+      "subcollections": {
+        "votes": {
+          "comment": "One ballot per voter, keyed by the voter's uid: any reader of the poll casts and changes their own vote without edit rights on the poll, and reads only their own (selfRead).",
+          "selfKeyed": {"fields": ["userId", "votedAt", "choiceId", "ranking"], "selfCreate": true, "selfDelete": false, "selfRead": true}
+        }
+      }
+    },
+    "projects_hub_blockers": {
+      "comment": "Projects tasks. The pipeline fields (queue, dispatch, PR mirrors, and the linked change request's state) are serverFields: only the Admin SDK writes them.",
+      "apps": ["projects"],
+      "serverFields": ["devStatus", "queueItemId", "agentQueuedAt", "agentJobId", "agentDispatchedAt",
+                       "agentDispatchSource", "agentDispatchError", "agentClaimedAt", "prUrl", "prNumber", "prState",
+                       "prSyncedAt", "liveAt", "githubIssueUrl", "githubIssueNumber", "parentRequest",
+                       "regressionOf", "editedAt", "editedBy", "declinedAt", "declinedBy", "platformSource",
+                       "changeRequestState", "changeRequestSyncedAt"]
+    },
+    "projects_hub_projects": {
+      "apps": ["projects"],
+      "subcollections": {
+        "notification_prefs": {
+          "comment": "One preference doc per reader, keyed by their uid: anyone who can read the project sets their own alert preference for it without edit rights on the project.",
+          "selfKeyed": {"fields": ["userId", "muted", "updatedAt"], "selfCreate": true, "selfDelete": true}
+        }
+      }
+    },
+    "projects_hub_tags": { "naturalKeyIds": true, "apps": ["projects"] },
+    "property_data_cache": {
+      "comment": "Address lookups cached per group and per product: AddressCacheService (rented_dwelling, course_of_construction) keys each entry docForKey('<appId>_<address key>'), so one product never reads or overwrites the other's entry under its own entitlement. Legacy untagged entries (most carry no groupId) are left as cache misses rather than rekeyed, so it isn't a naturalKeyIds collection.",
+      "apps": ["course-of-construction", "rented-dwelling"],
+      "guestWritable": true,
+      "auditTrail": true,
+      "blockDelete": true
+    },
+    "qr_codes": { "apps": ["qr-codes"] },
+    "recipes": {
+      "apps": ["cookbook"],
+      "subcollections": {
+        "photo_comments": {
+          "comment": "Comments on a recipe's photos, tagged with the photo's photoId (one subcollection level, as the rules reach). Any reader of the recipe adds one naming themselves; only its author edits or deletes it.",
+          "authorField": "commenterId",
+          "authorEmailField": "commenterEmail",
+          "authorMayUpdate": ["text"]
+        }
+      }
+    },
+    "reports": { "apps": ["reports"] },
+    "scorecards": { "apps": ["scorecards"] },
+    "scout_jay_events": { "apps": ["scout-jay"] },
+    "scout_jay_matches": { "apps": ["scout-jay"] },
+    "scout_jay_reports": { "apps": ["scout-jay"] },
+    "scout_jay_teams": { "apps": ["scout-jay"] },
+    "shop_categories": { "apps": ["shop"] },
+    "shop_notification_recipients": { "apps": ["shop"] },
+    "shop_orders": { "apps": ["shop"] },
+    "shop_product_requests": {
+      "comment": "Product requests: members create them from Shop; a guest's comes from the shopStorefrontCheckout callable (guest: true, created awaiting_payment) and is paid only through the payments core's shop.product_request kind, which moves it to pending. The guest's contact and the payment fields are written only by the server.",
+      "apps": ["shop"],
+      "serverFields": ["guest", "contact", "unitPriceCents", "shippingCents", "totalCents", "currency", "paymentStatus",
+                       "paymentOrderId", "paidAt", "amountPaidCents", "refundedCents", "source"]
+    },
+    "shop_products": { "apps": ["shop"] },
+    "shop_sales_pages": {
+      "comment": "Sell's direct sales pages: one product, service, event or appointment with its own link (/buy/<id>). Members of the group read them; visitors outside it reach a page only through the shopSalesGetPage callable, which honours its status and visibility.",
+      "apps": ["shop"]
+    },
+    "shop_sales_booking_links": {
+      "comment": "Sell bookings: the visitor's manage-booking link tokens (functions/_tokens.js; the doc id is the token's sha256, plaintext is never stored) naming the group and submission bluejay.gg/booking/<token> opens.",
+      "kind": "server"
+    },
+    "shop_sales_page_stats": {
+      "comment": "Visits, sources and sales per direct sales page (doc id = page id), counted by the shop_sales callables and the shop.sales_submission payment kind. ownerIds = the page's owner, so only the seller and Shop admins read them.",
+      "apps": ["shop"],
+      "serverWritten": true,
+      "ownerScoped": true,
+      "subcollections": { "visitors": { "comment": "One doc per hashed visitor id, for the unique visitor count.", "serverWritten": true } }
+    },
+    "shop_sales_rate_limits": { "kind": "server" },
+    "shop_sales_submissions": {
+      "comment": "Registrations, bookings and purchases made on a direct sales page. Created only by shopSalesSubmit (visitors are often anonymous and outside the group); paid state is written only by the payments core's shop.sales_submission kind. ownerIds = the page's owner: the seller (and Shop admins) read them and update status, schedule and notes; the buyer's contact, answers and price stay as submitted. Bookings: calendarEventId/calendarEventCollection (the event a confirmed booking put in its page's calendar), cancellation and reschedule stamps, the visitor link's send time and the booking's time zone are serverFields, written by _shop_bookings.js.",
+      "apps": ["shop"],
+      "ownerScoped": true,
+      "blockCreate": true,
+      "blockDelete": true,
+      "serverFields": ["clientUids", "pageId", "payerUid", "contact", "answers", "quantity", "slotId", "unitPriceCents", "totalCents", "currency", "paymentStatus", "paymentOrderId", "paidAt", "amountPaidCents", "refundedCents", "holdExpiresAt", "source", "createdAt", "calendarEventId", "calendarEventCollection", "cancelledAt", "cancelledBy", "cancelReason", "rescheduledAt", "bookingLinkSentAt", "timeZone"]
+    },
+    "shop_sellers": { "naturalKeyIds": true, "apps": ["shop"] },
+    "shop_shipping_sizes": { "apps": ["shop"] },
+    "signature_audit_logs": { "comment": "Signing events the app records (uploaded, viewed, signer added, deleted) alongside the audit trail: append-only, so an entry can be neither changed nor removed. Its author is the rules-enforced creatorId.", "apps": ["signatures"], "auditTrail": true, "auditRedact": ["details.secureUrl"], "immutableDoc": true, "blockDelete": true },
+    "signature_delivery_requests": { "apps": ["signatures"], "auditTrail": true, "auditRedact": ["secureUrl"], "blockDelete": true, "creatorOnly": ["deletedAt"] },
+    "signature_documents": { "comment": "Kept for the record: deleting one sets deletedAt (a soft delete), which only its creator or a platform admin may set or clear.", "apps": ["signatures"], "auditTrail": true, "blockDelete": true, "creatorOnly": ["deletedAt"] },
+    "signature_recipients": { "apps": ["signatures"], "auditTrail": true, "auditRedact": ["accessToken"], "blockDelete": true, "creatorOnly": ["deletedAt"], "serverFields": ["clientUids"]},
+    "snake_blitz_stats": { "naturalKeyIds": true, "apps": ["snake-blitz"] },
+    "spinners": { "apps": ["spinners"] },
+    "system_report_subscriptions": { "naturalKeyIds": true, "apps": ["system-reports"] },
+    "tap_war_games": { "apps": ["tap-war"] },
+    "tic_tac_toe_games": { "apps": ["tic-tac-toe"] },
+    "town_square_messages": { "apps": ["town-square"] },
+    "translator_messages": { "apps": ["translator"] },
+    "vendor_market_categories": { "apps": ["marketplace-admin"], "publishTo": "public_vendor_market_categories" },
+    "vendor_market_event_budgets": { "naturalKeyIds": true, "apps": ["vendor-marketplace"] },
+    "vendor_market_favorites": { "naturalKeyIds": true, "apps": ["vendor-marketplace"] },
+    "vendor_market_selections": { "naturalKeyIds": true, "apps": ["vendor-marketplace"] },
+    "vendor_market_timeline": { "apps": ["vendor-marketplace"] },
+    "warehouse_saved_queries": { "apps": ["data-warehouse"] },
+    "warehouse_dashboards": {
+      "comment": "Data Warehouse dashboards (pages of tiles over one table). Readers of the app view them; only :edit/:admin create, change or delete them.",
+      "apps": ["data-warehouse"],
+      "writeTier": "edit"
+    },
+    "whiteboards": {
+      "comment": "ownerIds = the board's members (owner included), kept in step with memberIds, so a board and its element subcollections are reachable only by its members. Every member edits the whole board through ownership alone, so the app runs with sharedEditing: false (Tier 3) without losing anything.",
+      "apps": ["whiteboard"],
+      "ownerScoped": true
+    },
+    "workout_custom_exercises": { "apps": ["workout-tracker"], "ownerScoped": true },
+    "workout_exercise_logs": { "apps": ["workout-tracker"], "ownerScoped": true },
+    "workout_plans": { "apps": ["workout-tracker"], "ownerScoped": true },
+    "workout_sessions": { "naturalKeyIds": true, "apps": ["workout-tracker"], "ownerScoped": true },
+    "youtube_manager_channels": { "naturalKeyIds": true, "apps": ["youtube-analytics"] },
+    "youtube_manager_ai_suggestions": { "apps": ["youtube-analytics"] },
+    "categories": {
+      "comment": "Global category catalog; no client writes (fixes the generic rule overriding its old `allow write: if false`).",
+      "kind": "platform"
+    },
+    "public_vendor_market_listings": {
+      "comment": "The public namespace (D2): published marketplace listings every client organization browses. Written only by publicPublish/publicUnpublish and the re-sync trigger; contact details and claim ownership stay in the tenant docs.",
+      "kind": "public",
+      "source": "vendor_market_listings",
+      "publishTier": "edit",
+      "publishWhen": {"status": "published"},
+      "requiredFields": ["name"],
+      "projection": ["name", "tagline", "description", "categoryIds", "city", "serviceArea", "website", "services",
+                     "photoUrls", "status", "startingPriceCents", "claimStatus", "createdAt", "updatedAt"],
+      "fileFields": ["photoUrls"]
+    },
+    "public_vendor_market_categories": {
+      "comment": "The public namespace (D2): the marketplace's category list, read by every client organization.",
+      "kind": "public",
+      "source": "vendor_market_categories",
+      "publishTier": "edit",
+      "requiredFields": ["name"],
+      "projection": ["name", "icon", "description", "sortOrder", "showsDietaryNeeds"]
+    },
+    "public_files": {
+      "comment": "The public namespace (D2): Storage app files their uploader made public. The file is copied to published/ and read under the rules.",
+      "kind": "public",
+      "source": "files",
+      "publishTier": "owner",
+      "publishWhen": {"isPublic": true},
+      "requiredFields": ["storagePath", "fileName"],
+      "projection": ["fileName", "displayName", "size", "contentType", "createdAt", "storagePath"],
+      "fileFields": ["storagePath"]
+    },
+    "calendar_user_settings": {
+      "comment": "One global calendar default per user across all their groups; doc id is the uid.",
+      "kind": "personal"
+    }
+  },
+  "exceptions": {
+    "EX-ADMIN-1": {
+      "what": "Platform admins (roles admin, status ACTIVE) read any document across tenants, write only collections declared adminWritable, and add comments (authorId == caller) under any group's docs in collections declared adminComments, then edit, soft-delete and like their own; platform developers (status ACTIVE) read those docs and do the same with comments (grantAdminRead, grantAdminWrite, grantAdminComment).",
+      "why": "Admin tools (Dev Pipeline, Usage Meter, Security Audit, Groups admin) are a deliberate cross-tenant feature. Writes are limited to adminWritable collections (D4c); every other admin change goes through a callable. T14 audited the admin screens: app request status changes and deletes go through the appMakerAdmin* callables, the Scripts app's client-side migrations were retired (Admin SDK scripts instead), Improve Apps' All-groups view no longer votes/edits/deletes other groups' tickets, and domain_verifications became an adminWritable platform_admin checklist. adminComments (bug_reports, feature_requests, app_requests) lets Dev Pipeline's and Improve Apps' triage comment threads work across groups; it adds a comment (and its author's own edits, soft delete and likes doc, on the audit trail), never changes the ticket or anyone else's comment. Developers work the same tickets from Dev Pipeline (its callables already let them change status, re-send, size and triage), so they read and comment on them too; they already see every ticket through devPipelineOverview. A suspended admin or developer gets nothing.",
+      "reviewed": "2026-11-09",
+      "ruleFunctions": ["grantAdminRead", "grantAdminWrite", "grantAdminComment"]
+    },
+    "EX-DEV-1": {
+      "what": "Platform developers (status ACTIVE) read collections declared developerRead (groups, users, collection_catalog, collection_policies) and write the platform catalog declared developerWritable (apps' descriptive fields, app_categories, platform_config, group names).",
+      "why": "Developers find and add members while managing groups and maintain the app catalog. App permission fields are serverFields, written only by the appsUpdatePermissions callable (D4b), and group membership fields only by the group_membership.js callables. T14 reviewed the remaining developer writes: all are descriptive catalog fields (app name/icon/categories, app_categories, platform_config, group names and logos, the domain_verifications checklist) and stay client writes.",
+      "reviewed": "2026-11-05",
+      "ruleFunctions": ["grantDeveloperRead", "grantDeveloperWrite"]
+    },
+    "EX-STEWARD-1": {
+      "what": "Members of an app's steward groups (app:<appId>:steward) read, comment on (and like comments on), change requests whose relatedAppId is that app, from any group; only in collections declared stewardRead (bug_reports, feature_requests).",
+      "why": "A partner group co-builds an app for its client groups and must see the change requests about it. Keyed on relatedAppId, not groupId, so it can't be a tenant grant; limited by the table to the two change-request collections (D4e).",
+      "reviewed": "2026-11-09",
+      "ruleFunctions": ["grantStewardRead"]
+    }
+  }
+}

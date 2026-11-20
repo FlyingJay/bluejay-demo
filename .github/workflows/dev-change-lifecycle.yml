@@ -1,0 +1,144 @@
+name: Dev Change Lifecycle
+
+# Tracks every PR into main through opened → CI → ready for review →
+# merged → live in production, recording it in Firestore's
+# dev_changes/{changeId}. The devChangesOnWrite Cloud Function turns those
+# transitions into notifications: "ready for review" / "checks failed" /
+# "deploy failed" to reviewers, and — once live — marks linked Improve Apps /
+# App Maker / Projects tickets fixed/completed/shipped, which notifies the
+# person who submitted them. See functions/_dev_changes.js.
+#
+# Each sync also reads the PR's Hosting preview channel (pr-<n>) back from
+# the Hosting API into dev_changes.preview, with the same service account
+# deploy.yml deploys previews with (functions/_dev_change_preview.js). A
+# finished Build and Deploy run re-syncs the PR, so the URL lands as soon as
+# the preview is up.
+#
+# workflow_run.workflows lists the PR workflows that can finish last
+# (CI_SYNC_WORKFLOWS: Tests, Build and Deploy, Rules tests), so CI completion
+# re-evaluates the PR, and every deploy workflow in DEPLOY_WORKFLOWS, so a
+# finished deploy re-evaluates merged PRs. Each sync re-reads every check, so
+# the quick PR workflow (PR Checks) is left out; its result lands with the
+# next sync. functions/_dev_changes.js
+# holds both lists and the reasons, and _dev_changes.test.js enforces them.
+#
+# Kept cheap (every event used to start a billed job; ~1,370 a day):
+#   - PR events: only the ones that change what's recorded. review_requested
+#     / review_request_removed are dropped — reviewers are re-read on every
+#     sync, and alerts only fire on state changes, which re-sync first.
+#   - Draft PRs: only converted_to_draft and closed sync (so a tracked PR's
+#     state follows it into draft and out of the pipeline). A draft's other
+#     events are skipped; ready_for_review records it and re-arms the
+#     "ready for review" alert once its CI passes.
+#   - workflow_run: only a PR's CI finishing (not cancelled — a superseded
+#     run's replacement reports instead — and not skipped, which is a draft
+#     PR's run, whose jobs all skip), or a deploy train (the DEPLOY_WORKFLOWS
+#     list in the job `if:`, also test-enforced) finishing on main,
+#     cancelled or not (each one that deployed something is recorded in
+#     Dev Pipeline's deploy history). The train's hourly fallback run
+#     (`schedule`) is left out: it stands down within a minute on all but a
+#     rare few hours, and each one used to start a billed job here, 24 a
+#     day. The 3-hourly reconcile records the few that do deploy
+#     (recordFallbackDeployments in sync_dev_change.js). Nightly runs of the
+#     CI workflows never start a job.
+#   - Docs-agent PRs (head branch claude/docs-nightly-* from the nightly docs
+#     batch) are skipped: they're documentation-only, merged by auto-merge-docs-pr.yml, never need
+#     review and link no tickets. The 3-hourly reconcile also syncs every
+#     open PR that isn't tracked yet, so one that strays into code still gets
+#     tracked (and its "ready for review" alert) within 3 hours.
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - converted_to_draft
+      - edited
+      - closed
+  workflow_run:
+    workflows:
+      - Build and Deploy
+      - Deploy Production
+      - Rules tests
+      - Tests
+    types: [completed]
+  schedule:
+    # Safety net for missed events: reconcile everything not yet terminal.
+    - cron: '23 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  sync:
+    # Fork PRs get no secrets; nothing to do for them. See the header for the
+    # rest of the filter; the deploy names must match DEPLOY_WORKFLOWS in
+    # functions/_dev_changes.js (_dev_changes.test.js checks).
+    if: >-
+      (github.event_name == 'pull_request'
+        && (github.event.pull_request.draft != true
+          || github.event.action == 'converted_to_draft'
+          || github.event.action == 'closed')
+        && github.event.pull_request.head.repo.full_name == github.repository
+        && !startsWith(github.event.pull_request.head.ref, 'claude/docs-nightly-'))
+      || (github.event_name == 'workflow_run'
+        && github.event.workflow_run.event == 'pull_request'
+        && github.event.workflow_run.conclusion != 'cancelled'
+        && github.event.workflow_run.conclusion != 'skipped'
+        && !startsWith(github.event.workflow_run.head_branch, 'claude/docs-nightly-'))
+      || (github.event_name == 'workflow_run'
+        && github.event.workflow_run.event != 'pull_request'
+        && github.event.workflow_run.event != 'schedule'
+        && github.event.workflow_run.head_branch == 'main'
+        && contains(fromJSON('["Deploy Production"]'), github.event.workflow_run.name))
+      || github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+    # Events for the same PR run in order; a newer one replaces one still
+    # waiting, which is safe because each run re-reads the PR from GitHub.
+    # Job-level, not workflow-level, so a run whose job the `if:` skips never
+    # enters the group and can't replace a waiting run that has work to do.
+    concurrency:
+      group: dev-change-lifecycle-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || 'reconcile' }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: functions
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Function Dependencies
+        run: npm ci --omit=dev
+        working-directory: functions
+
+      - name: Create Service Account Key File
+        run: |
+          SA_DIR="$(mktemp -d)"
+          chmod 700 "$SA_DIR"
+          SA_PATH="$SA_DIR/firebase-sa.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_BLUEJAY" > "$SA_PATH"
+          chmod 600 "$SA_PATH"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$SA_PATH" >> "$GITHUB_ENV"
+        env:
+          FIREBASE_SERVICE_ACCOUNT_BLUEJAY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BLUEJAY }}
+
+      - name: Sync dev change state
+        run: node scripts/sync_dev_change.js
+        working-directory: functions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GCLOUD_PROJECT: bluejay-d926f

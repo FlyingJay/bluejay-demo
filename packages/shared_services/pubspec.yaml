@@ -1,0 +1,62 @@
+name: shared_services
+description: A package for shared platform services like file handling.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Dependencies needed by the services themselves
+  # metered_firestore.dart implements cloud_firestore's Query/
+  # FirebaseFirestore/WriteBatch interfaces as of 6.10 (WriteBatch.update
+  # became generic in 6.9); re-verify it when moving to a newer version.
+  cloud_firestore: ^6.10.2
+  # firestore_platform_metering.dart subclasses these plugins' own document/
+  # collection/instance classes (from their src/), so they're pinned to the
+  # minor versions cloud_firestore 6.10 resolves; the tests in
+  # test/firestore_platform_metering_test.dart and the web release build
+  # re-verify them on any bump.
+  cloud_firestore_platform_interface: ">=8.0.7 <8.1.0"
+  cloud_firestore_web: ">=5.7.3 <5.8.0"
+  collection: ^1.18.0
+  firebase_core: ^4.2.0
+  cloud_functions: ^6.2.0
+  file_picker: ^8.0.5
+  firebase_remote_config: ^6.1.0
+  firebase_auth: ^6.1.1
+  firebase_storage: ^13.0.3
+  # storage_denial_reporting.dart wraps the platform instance and its
+  # references (public platform-interface API only).
+  firebase_storage_platform_interface: ^6.0.7
+  flutter_tts: ^4.2.5
+  uuid: ^4.5.1
+  http: ^1.5.0
+  csv: ^6.0.0
+  image_picker: ^1.2.0
+  path_provider: ^2.0.11
+  permission_handler: ^12.0.1
+  share_plus: ^10.0.0
+  url_launcher: ^6.1.5
+  # Payments core client (lib/payments/): Stripe Elements card entry and
+  # confirmation on an organization's connected account. Same pins as the
+  # root app and the apps that already take card payments.
+  flutter_stripe: 12.4.0
+  flutter_stripe_web: 7.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # 4.5+ requires cloud_firestore 7.
+  fake_cloud_firestore: ">=4.4.0 <4.5.0"
+  # setupFirebaseCoreMocks() for the platform metering tests.
+  firebase_core_platform_interface: ^8.1.1
+
+dependency_overrides:
+  # Same pin as the root pubspec: stripe_platform_interface 12.6.0 added
+  # abstract methods flutter_stripe_web 7.4.0 doesn't implement.
+  stripe_platform_interface: ">=12.0.0 <12.6.0"

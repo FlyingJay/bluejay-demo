@@ -1,0 +1,230 @@
+# Runs the repo's test suites and analyzer on every pull request, plus a full
+# run nightly. deploy.yml only builds; before this, no Dart or Node test ran
+# in CI, so tests silently rotted on main.
+#
+# - node:          every functions/ and scripts/ Node test file, one process
+#                  per file, with no Google credentials.
+# - flutter:       `flutter analyze` (errors fail, infos/warnings don't) and
+#                  `flutter test` per package, sharded. On a PR only the
+#                  packages it changes plus their dependents run; the nightly
+#                  and manual runs check every package. A package with a
+#                  ci_test_time_zones file also runs its tests in each zone
+#                  it lists (runners default to UTC, which has no DST).
+# - flutter_root:  the launcher app itself: `flutter analyze lib` + root tests.
+# - tests:         one summary check that fails if any of the above failed.
+#
+# On a PR, `plan` decides which suites run (scripts/ci/suite_inputs.js holds
+# each suite's inputs): node skips a PR that changes only files no Node test
+# reads (root test/, assets/, platform folders, plans/), and flutter_root
+# skips one that changes nothing the app reads (a functions/ or security/
+# change, say). A documentation-only PR (documentation/ files, plus
+# pubspec.yaml lines that only register documentation/ asset folders — the
+# docs auto-merge's rule, see scripts/ci/docs_only_change.js) skips
+# node/flutter/flutter_root. `tests` reports success whenever every suite
+# passed or was skipped by the plan. A bad pubspec asset line breaks the web
+# build, which deploy.yml checks.
+#
+# The nightly run skips every suite when main has no commit since the last
+# successful nightly that any of them reads, except on Sundays (UTC), when
+# it always runs so tests that depend on the date still run weekly.
+#
+# Draft PRs run nothing: plan and the summary skip a draft, so no runner
+# starts. Marking the PR ready (ready_for_review) runs the full set, and so
+# does every later push while it stays ready. Run scripts/ci/local_check.sh
+# before marking a PR ready; it plans and runs the same suites locally.
+#
+# The heavy jobs (node, flutter, flutter_root) hold no secrets and run on
+# the runner the HEAVY_RUNNER repository variable names, or ubuntu-latest
+# when it's unset.
+name: Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: '23 8 * * *' # nightly full run (08:23 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read # plan reads the last successful nightly run
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # deploy.yml pins the same version; bump both together
+  # (scripts/ci/workflow_flutter_version.test.js checks they match).
+  FLUTTER_VERSION: '3.47.9'
+  NODE_VERSION: '22.23.1'
+
+jobs:
+  node:
+    needs: plan
+    if: needs.plan.outputs.node == 'true'
+    runs-on: ${{ vars.HEAVY_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            scripts/security_tier_audit/package-lock.json
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+      - name: Install security tier audit dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: scripts/security_tier_audit
+      - name: Run Node tests
+        run: scripts/ci/run_node_tests.sh 4
+
+  plan:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      count: ${{ steps.plan.outputs.count }}
+      docs_only: ${{ steps.docs.outputs.docs_only }}
+      node: ${{ steps.suites.outputs.node }}
+      flutter_root: ${{ steps.suites.outputs.flutter_root }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect a documentation-only PR
+        id: docs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            node scripts/ci/docs_only_change.js --base "$BASE_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Decide which suites run
+        id: suites
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DOCS_ONLY: ${{ steps.docs.outputs.docs_only }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            if [ "$EVENT" = "pull_request" ] && [ "$DOCS_ONLY" = "true" ]; then
+              echo "node=false"; echo "flutter_root=false"; echo "flutter=false"
+            elif [ "$EVENT" = "pull_request" ]; then
+              node scripts/ci/suite_inputs.js changed --base "$BASE_SHA" --suites node,flutter_root
+              echo "flutter=true"
+            elif [ "$EVENT" = "schedule" ]; then
+              run="$(node scripts/ci/suite_inputs.js nightly --workflow tests.yml \
+                --suites node,flutter,flutter_root --full-on-weekday 0 | sed -n 's/^run=//p' || true)"
+              run="${run:-true}"
+              echo "node=$run"; echo "flutter_root=$run"; echo "flutter=$run"
+            else
+              echo "node=true"; echo "flutter_root=true"; echo "flutter=true"
+            fi
+          } | tee -a "$GITHUB_OUTPUT"
+      - name: Plan Flutter packages
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FLUTTER: ${{ steps.suites.outputs.flutter }}
+        run: |
+          if [ "$FLUTTER" != "true" ]; then
+            printf 'shards=[]\ncount=0\n' >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            node scripts/ci/flutter_packages.js plan --base "$BASE_SHA" --shards 6 >> "$GITHUB_OUTPUT"
+          else
+            node scripts/ci/flutter_packages.js plan --all --shards 8 >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+  flutter:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ${{ vars.HEAVY_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJson(needs.plan.outputs.shards) }}
+    name: flutter (${{ matrix.shard.name }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-tests-pub-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-tests-pub-${{ env.FLUTTER_VERSION }}-
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Analyze and test packages
+        run: scripts/ci/check_flutter_packages.sh ${{ matrix.shard.packages }}
+
+  flutter_root:
+    needs: plan
+    if: needs.plan.outputs.flutter_root == 'true'
+    runs-on: ${{ vars.HEAVY_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-tests-pub-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-tests-pub-${{ env.FLUTTER_VERSION }}-
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Stub firebase_options.dart
+        # The real file is generated from a secret at deploy time; analysis
+        # and tests only need the symbol to exist.
+        run: |
+          cat > lib/firebase_options.dart <<'EOF'
+          import 'package:firebase_core/firebase_core.dart';
+
+          class DefaultFirebaseOptions {
+            static FirebaseOptions get currentPlatform =>
+                throw UnsupportedError('CI stub: no Firebase options');
+          }
+          EOF
+      - run: flutter pub get
+      - name: Analyze the app (errors only)
+        run: flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib
+      - name: Test the app
+        run: flutter test --no-pub --timeout 120s
+
+  tests:
+    # The single check to require: green only if plan passed and every suite
+    # passed or was skipped by the plan (no package touched, nothing the
+    # suite reads changed, a documentation-only PR, or a quiet night). A suite
+    # only ever depends on plan, so a skip can't hide a failure upstream.
+    if: always() && github.event.pull_request.draft != true
+    needs: [node, plan, flutter, flutter_root]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Summarize
+        env:
+          DOCS_ONLY: ${{ needs.plan.outputs.docs_only }}
+        run: |
+          echo "docs_only=$DOCS_ONLY node=${{ needs.node.result }} plan=${{ needs.plan.result }} flutter=${{ needs.flutter.result }} flutter_root=${{ needs.flutter_root.result }}"
+          [ "${{ needs.plan.result }}" = "success" ] || exit 1
+          for r in "${{ needs.node.result }}" "${{ needs.flutter.result }}" "${{ needs.flutter_root.result }}"; do
+            case "$r" in success|skipped) ;; *) exit 1 ;; esac
+          done
